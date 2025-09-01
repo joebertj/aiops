@@ -69,7 +69,7 @@ class SmartKubernetesMCPServer:
                         "description": f"Getting logs for pod {pod_name}"
                     }
                 else:
-                    return {"action": "get_pods", "args": {"namespace": namespace}, "description": "Getting pods to select one for logs"}
+                    return {"action": "get_all_pods", "args": {}, "description": "Getting all pods across all namespaces"}
             elif "describe" in prompt_lower or "details" in prompt_lower or "info" in prompt_lower:
                 pod_name = self.extract_pod_name(prompt)
                 if pod_name:
@@ -79,9 +79,13 @@ class SmartKubernetesMCPServer:
                         "description": f"Getting detailed information for pod {pod_name}"
                     }
                 else:
-                    return {"action": "get_pods", "args": {"namespace": namespace}, "description": "Getting pods to select one for details"}
+                    return {"action": "get_all_pods", "args": {}, "description": "Getting all pods across all namespaces"}
             else:
-                return {"action": "get_pods", "args": {"namespace": namespace}, "description": "Getting pods information"}
+                # If no specific namespace mentioned, get all pods
+                if "namespace" not in prompt_lower or "default" in prompt_lower:
+                    return {"action": "get_all_pods", "args": {}, "description": "Getting all pods across all namespaces"}
+                else:
+                    return {"action": "get_pods", "args": {"namespace": namespace}, "description": f"Getting pods in {namespace} namespace"}
         
         # Service-related queries
         elif any(word in prompt_lower for word in ["service", "services", "svc"]):
@@ -91,7 +95,15 @@ class SmartKubernetesMCPServer:
         # Deployment-related queries
         elif any(word in prompt_lower for word in ["deployment", "deployments", "deploy"]):
             namespace = self.extract_namespace(prompt)
-            return {"action": "get_deployments", "args": {"namespace": namespace}, "description": "Getting deployments information"}
+            if "create" in prompt_lower or "deploy" in prompt_lower:
+                # Extract app name from prompt
+                app_name = self.extract_app_name(prompt)
+                if app_name:
+                    return {"action": "create_deployment", "args": {"name": app_name, "namespace": namespace}, "description": f"Creating {app_name} deployment"}
+                else:
+                    return {"action": "get_deployments", "args": {"namespace": namespace}, "description": "Getting deployments information"}
+            else:
+                return {"action": "get_deployments", "args": {"namespace": namespace}, "description": "Getting deployments information"}
         
         # Namespace-related queries
         elif any(word in prompt_lower for word in ["namespace", "namespaces", "ns"]):
@@ -139,25 +151,48 @@ class SmartKubernetesMCPServer:
         
         return None
     
+    def extract_app_name(self, prompt: str) -> Optional[str]:
+        """Extract application name from deployment prompt"""
+        # Look for app name patterns
+        patterns = [
+            r"deploy (\w+)",
+            r"deploy an? (\w+)",
+            r"create (\w+)",
+            r"create an? (\w+)",
+            r"(\w+) deployment",
+            r"deploy (\w+) app"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, prompt, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        return None
+    
     async def handle_prompt(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle natural language prompt and convert to Kubernetes operations"""
         try:
             prompt = message["params"]["arguments"]["prompt"]
-            print(f"🤖 Processing prompt: {prompt}")
+            print(f"🤖 Processing prompt: {prompt}", file=sys.stderr)
             
             # Parse the natural language
             parsed = self.parse_natural_language(prompt)
-            print(f"🔍 Interpreted as: {parsed['description']}")
+            print(f"🔍 Interpreted as: {parsed['description']}", file=sys.stderr)
             
             # Execute the action
             if parsed["action"] == "get_cluster_overview":
                 result = await self.get_cluster_overview(parsed["args"])
             elif parsed["action"] == "get_pods":
                 result = await self.get_pods(parsed["args"])
+            elif parsed["action"] == "get_all_pods":
+                result = await self.get_all_pods(parsed["args"])
             elif parsed["action"] == "get_services":
                 result = await self.get_services(parsed["args"])
             elif parsed["action"] == "get_deployments":
                 result = await self.get_deployments(parsed["args"])
+            elif parsed["action"] == "create_deployment":
+                result = await self.create_deployment(parsed["args"])
             elif parsed["action"] == "get_nodes":
                 result = await self.get_nodes(parsed["args"])
             elif parsed["action"] == "get_namespaces":
@@ -257,6 +292,33 @@ class SmartKubernetesMCPServer:
             
             return summary
             
+        elif action == "get_all_pods":
+            total_pods = result.get("total_pods", 0)
+            namespaces = result.get("namespaces", {})
+            summary = f"📦 **All Pods Across All Namespaces** ({total_pods} total)\n\n"
+            
+            for namespace, pods in namespaces.items():
+                summary += f"📁 **{namespace}** ({len(pods)} pods):\n"
+                for pod in pods:
+                    status_icon = "🟢" if pod.get("status") == "Running" else "🟡"
+                    summary += f"  {status_icon} {pod['name']:<30} {pod.get('status', 'Unknown')}\n"
+                summary += "\n"
+            
+            return summary
+            
+        elif action == "create_deployment":
+            deployment = result.get("deployment", {})
+            summary = f"🚀 **Deployment Created Successfully!**\n\n"
+            summary += f"📋 **Details:**\n"
+            summary += f"  • Name: {deployment.get('name', 'Unknown')}\n"
+            summary += f"  • Namespace: {deployment.get('namespace', 'Unknown')}\n"
+            summary += f"  • Replicas: {deployment.get('replicas', 0)}\n"
+            summary += f"  • Available: {deployment.get('available', 0)}\n"
+            summary += f"  • Ready: {deployment.get('ready', 0)}\n\n"
+            summary += f"✅ {result.get('message', 'Deployment created')}\n"
+            
+            return summary
+            
         elif action == "get_services":
             services = result.get("services", [])
             namespace = result.get("namespace", "default")
@@ -320,6 +382,39 @@ class SmartKubernetesMCPServer:
             
         except ApiException as e:
             raise Exception(f"Failed to get cluster overview: {e}")
+    
+    async def get_all_pods(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get pods from all namespaces"""
+        try:
+            pods = self.core_v1.list_pod_for_all_namespaces()
+            
+            # Group by namespace
+            namespace_pods = {}
+            for pod in pods.items:
+                namespace = pod.metadata.namespace
+                if namespace not in namespace_pods:
+                    namespace_pods[namespace] = []
+                
+                # Handle the ready status properly
+                ready_status = 0
+                if pod.status.container_statuses:
+                    ready_status = sum(1 for cs in pod.status.container_statuses if cs.ready)
+                
+                namespace_pods[namespace].append({
+                    "name": pod.metadata.name,
+                    "status": pod.status.phase,
+                    "ready": ready_status,
+                    "restarts": pod.status.container_statuses[0].restart_count if pod.status.container_statuses else 0,
+                    "age": pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else None
+                })
+            
+            return {
+                "all_namespaces": True,
+                "total_pods": len(pods.items),
+                "namespaces": namespace_pods
+            }
+        except ApiException as e:
+            raise Exception(f"Failed to get all pods: {e}")
     
     async def get_pods(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get pods from a namespace"""
@@ -446,6 +541,61 @@ class SmartKubernetesMCPServer:
         except ApiException as e:
             raise Exception(f"Failed to get pod {name}: {e}")
     
+    async def create_deployment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new deployment"""
+        name = args["name"]
+        namespace = args.get("namespace", "default")
+        
+        try:
+            # Create deployment object
+            deployment = client.V1Deployment(
+                metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+                spec=client.V1DeploymentSpec(
+                    replicas=1,
+                    selector=client.V1LabelSelector(
+                        match_labels={"app": name}
+                    ),
+                    template=client.V1PodTemplateSpec(
+                        metadata=client.V1ObjectMeta(
+                            labels={"app": name}
+                        ),
+                        spec=client.V1PodSpec(
+                            containers=[
+                                client.V1Container(
+                                    name=name,
+                                    image=f"{name}:latest" if name != "nginx" else "nginx:latest",
+                                    ports=[client.V1ContainerPort(container_port=80)]
+                                )
+                            ]
+                        )
+                    )
+                )
+            )
+            
+            # Create the deployment
+            result = self.apps_v1.create_namespaced_deployment(
+                namespace=namespace,
+                body=deployment
+            )
+            
+            return {
+                "action": "deployment_created",
+                "name": name,
+                "namespace": namespace,
+                "status": "Created",
+                "message": f"Successfully created {name} deployment in {namespace} namespace",
+                "deployment": {
+                    "name": result.metadata.name,
+                    "namespace": result.metadata.namespace,
+                    "replicas": result.spec.replicas,
+                    "available": result.status.available_replicas if result.status.available_replicas else 0,
+                    "ready": result.status.ready_replicas if result.status.ready_replicas else 0
+                }
+            }
+            
+        except ApiException as e:
+            raise Exception(f"Failed to create deployment {name}: {e}")
+    
     async def get_pod_logs(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get logs from a specific pod"""
         name = args["name"]
@@ -472,8 +622,9 @@ class SmartKubernetesMCPServer:
     
     async def run(self):
         """Run the MCP server"""
-        logger.info("🚀 Starting Smart Kubernetes MCP Server...")
-        logger.info("💡 This server converts natural language prompts to Kubernetes API calls!")
+        # Write startup messages to stderr so they don't interfere with JSON responses
+        print("🚀 Starting Smart Kubernetes MCP Server...", file=sys.stderr)
+        print("💡 This server converts natural language prompts to Kubernetes API calls!", file=sys.stderr)
         
         while True:
             try:
@@ -489,7 +640,7 @@ class SmartKubernetesMCPServer:
                 try:
                     message = json.loads(line)
                 except json.JSONDecodeError:
-                    logger.error(f"Invalid JSON: {line}")
+                    print(f"Invalid JSON: {line}", file=sys.stderr)
                     continue
                 
                 # Handle different message types
@@ -514,13 +665,13 @@ class SmartKubernetesMCPServer:
                         }
                     }
                 
-                # Send response
+                # Send response to stdout (this is what the client reads)
                 response_line = json.dumps(response) + "\n"
-                await asyncio.get_event_loop().run_in_executor(None, sys.stdout.write, response_line)
-                await asyncio.get_event_loop().run_in_executor(None, sys.stdout.flush)
+                sys.stdout.write(response_line)
+                sys.stdout.flush()
                 
             except Exception as e:
-                logger.error(f"Error processing message: {e}")
+                print(f"Error processing message: {e}", file=sys.stderr)
                 error_response = {
                     "jsonrpc": "2.0",
                     "id": message.get("id") if 'message' in locals() else None,
@@ -530,8 +681,8 @@ class SmartKubernetesMCPServer:
                     }
                 }
                 error_line = json.dumps(error_response) + "\n"
-                await asyncio.get_event_loop().run_in_executor(None, sys.stdout.write, error_line)
-                await asyncio.get_event_loop().run_in_executor(None, sys.stdout.flush)
+                sys.stdout.write(error_line)
+                sys.stdout.flush()
     
     async def handle_initialization(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP initialization request"""

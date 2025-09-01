@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Interactive Client for Smart Kubernetes MCP Server
-Test natural language prompts and see Kubernetes API calls in action
+Working Interactive Client for Smart Kubernetes MCP Server
+This version properly handles the communication and continuously asks for prompts
 """
 
 import asyncio
@@ -10,8 +10,8 @@ import subprocess
 import sys
 from typing import Dict, Any
 
-class InteractiveMCPClient:
-    """Interactive client for testing natural language prompts"""
+class WorkingInteractiveMCPClient:
+    """Working interactive client that continuously asks for prompts"""
     
     def __init__(self):
         self.process = None
@@ -20,11 +20,13 @@ class InteractiveMCPClient:
     async def start_server(self):
         """Start the MCP server as a subprocess"""
         try:
+            # Start server with proper pipe configuration
             self.process = await asyncio.create_subprocess_exec(
                 "python3", "smart_k8s_mcp.py",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                bufsize=0  # No buffering
             )
             print("🚀 Started Smart Kubernetes MCP Server")
             return True
@@ -43,10 +45,23 @@ class InteractiveMCPClient:
             self.process.stdin.write(message_line.encode())
             await self.process.stdin.drain()
             
+            # Wait for response
+            await asyncio.sleep(0.2)
+            
             # Read response
+            if self.process.stdout.at_eof():
+                return {"error": "Server closed stdout"}
+            
             response_line = await self.process.stdout.readline()
             if response_line:
-                return json.loads(response_line.decode().strip())
+                response_text = response_line.decode().strip()
+                if response_text:
+                    try:
+                        return json.loads(response_text)
+                    except json.JSONDecodeError:
+                        return {"error": f"Invalid JSON response: {response_text}"}
+                else:
+                    return {"error": "Empty response from server"}
             else:
                 return {"error": "No response from server"}
                 
@@ -114,7 +129,7 @@ class InteractiveMCPClient:
     
     async def run_interactive(self):
         """Run interactive prompt loop"""
-        print("🧪 Smart Kubernetes MCP Interactive Client")
+        print("🧪 Working Interactive Kubernetes MCP Client")
         print("=" * 50)
         print("💡 Type natural language prompts to interact with your cluster")
         print("💡 Examples:")
@@ -131,8 +146,9 @@ class InteractiveMCPClient:
             return
         
         try:
-            # Wait a moment for server to start
-            await asyncio.sleep(1)
+            # Wait for server to start
+            print("⏳ Waiting for server to start...")
+            await asyncio.sleep(3)
             
             # Initialize server
             await self.initialize_server()
@@ -141,10 +157,12 @@ class InteractiveMCPClient:
                 print("❌ Server initialization failed")
                 return
             
+            print("\n🎉 Ready to process prompts! Type your requests below.")
+            
             # Interactive loop
             while True:
                 try:
-                    prompt = input("🤖 Enter your prompt: ").strip()
+                    prompt = input("\n🤖 Enter your prompt: ").strip()
                     
                     if prompt.lower() in ['quit', 'exit', 'q']:
                         print("👋 Goodbye!")
@@ -176,7 +194,7 @@ class InteractiveMCPClient:
 
 async def main():
     """Main entry point"""
-    client = InteractiveMCPClient()
+    client = WorkingInteractiveMCPClient()
     await client.run_interactive()
 
 if __name__ == "__main__":

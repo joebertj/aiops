@@ -14,8 +14,6 @@ A Model Context Protocol (MCP) server that converts natural language prompts dir
 
 - `smart_k8s_mcp.py` - Main MCP server with natural language processing
 - `interactive_client.py` - Interactive client for testing prompts
-- `kubernetes_mcp_server.py` - Basic MCP server (standard tools)
-- `simple_k8s_client.py` - Simple Kubernetes client for testing
 
 ## 🛠️ Installation
 
@@ -48,6 +46,9 @@ python3 interactive_client.py
 - "Get pods from kube-system namespace"
 - "Describe pod traefik-5d45fc8cc9-h7vj8"
 - "Show me the logs for pod coredns-ccb96694c-wxnc2"
+- "Show me all deployments"
+- "Get deployment status in kube-system"
+- "Check deployment health"
 
 ### Direct MCP Server
 
@@ -79,22 +80,40 @@ python3 kubernetes_mcp_server.py
 - ✅ Get cluster overview and health
 - ✅ List all nodes with status
 - ✅ List all namespaces
+- ✅ Component status monitoring
 
 ### Pod Operations
 - ✅ List pods by namespace
 - ✅ Get pod details and status
 - ✅ Retrieve pod logs
 - ✅ Pod health monitoring
+- ✅ Pod creation and management
+- ✅ Pod binding and eviction
 
 ### Service Operations
 - ✅ List services by namespace
 - ✅ Service configuration details
 - ✅ Port and endpoint information
+- ✅ Service creation and management
+- ✅ Service proxy operations
 
 ### Deployment Operations
 - ✅ List deployments by namespace
 - ✅ Deployment status and replicas
 - ✅ Rolling update information
+- ✅ Deployment scaling and updates
+- ✅ Deployment history and rollbacks
+- ✅ Deployment creation and management
+
+### Advanced Operations
+- ✅ **ConfigMaps & Secrets**: Management and listing
+- ✅ **Persistent Volumes**: Storage management
+- ✅ **RBAC**: Role and role binding management
+- ✅ **Networking**: Ingress, Network Policies
+- ✅ **Storage**: Storage classes, CSI drivers
+- ✅ **Batch Jobs**: CronJobs and Jobs
+- ✅ **Autoscaling**: HPA management
+- ✅ **Policy**: Pod disruption budgets
 
 ## 🔧 Configuration
 
@@ -153,6 +172,38 @@ Enable debug logging by modifying the logging level in the server files:
 logging.basicConfig(level=logging.DEBUG)
 ```
 
+## 🚀 Comprehensive API Capabilities
+
+Your Kubernetes MCP server has access to the full Kubernetes API surface:
+
+### **Core API Groups Available**
+- **🔧 Core V1**: Pods, Services, Nodes, Namespaces, ConfigMaps, Secrets
+- **🚀 Apps V1**: Deployments, StatefulSets, DaemonSets, ReplicaSets
+- **🌐 Networking V1**: Ingress, Network Policies, Service CIDRs
+- **🔐 RBAC V1**: Roles, RoleBindings, ClusterRoles, ClusterRoleBindings
+- **💾 Storage V1**: Storage Classes, CSI Drivers, Volume Attachments
+- **⚡ Batch V1**: Jobs, CronJobs
+- **📈 Autoscaling V1**: Horizontal Pod Autoscalers
+- **🛡️ Policy V1**: Pod Disruption Budgets
+
+### **Available Operations**
+- **Create**: Deployments, Pods, Services, ConfigMaps, Secrets
+- **List**: All resources across namespaces
+- **Get**: Detailed resource information
+- **Update**: Resource modifications and scaling
+- **Delete**: Resource cleanup
+- **Watch**: Real-time resource monitoring
+
+### **Example Prompts**
+- "Show me all deployments"
+- "Get deployment status in kube-system"
+- "Scale deployment traefik to 3 replicas"
+- "Check deployment health"
+- "Show deployment history"
+- "Create a new nginx deployment"
+- "List all storage classes"
+- "Show RBAC roles in kube-system"
+
 ## 🔮 Future Enhancements
 
 - [ ] Resource creation and management
@@ -161,6 +212,8 @@ logging.basicConfig(level=logging.DEBUG)
 - [ ] Multi-cluster support
 - [ ] Custom resource definitions
 - [ ] RBAC and security analysis
+- [ ] Advanced deployment strategies (Blue/Green, Canary)
+- [ ] Deployment automation and CI/CD integration
 
 ## 📚 MCP Protocol
 
