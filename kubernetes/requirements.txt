@@ -1,0 +1,5 @@
+kubernetes==28.1.0
+mcp==0.1.0
+asyncio-mqtt==0.16.1
+pydantic==2.5.0
+typing-extensions==4.8.0
