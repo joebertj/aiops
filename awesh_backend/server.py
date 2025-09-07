@@ -150,11 +150,18 @@ This allows the system to execute them automatically."""
             try:
                 async def collect_response():
                     result = ""
+                    chunk_count = 0
+                    debug_log("Starting AI client process_prompt")
                     async for chunk in self.ai_client.process_prompt(ai_input):
                         result += chunk
+                        chunk_count += 1
+                        debug_log(f"Received chunk {chunk_count}: {chunk[:50]}...")
+                    debug_log(f"Total chunks: {chunk_count}, total length: {len(result)}")
                     return result
                 
+                debug_log("Calling collect_response with timeout")
                 response = await asyncio.wait_for(collect_response(), timeout=25)
+                debug_log(f"Got response: {len(response)} chars")
                 output += response
                 output += "\n"
                 return output
