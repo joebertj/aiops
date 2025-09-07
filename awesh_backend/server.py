@@ -165,11 +165,15 @@ This allows the system to execute them automatically."""
                 response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
                 
-                # Check if AI provided awesh: commands to execute
+                # Check response type and handle accordingly
                 if "awesh:" in response:
                     debug_log("Found awesh: commands in AI response")
                     return await self._extract_and_execute_commands(response)
+                elif await self._contains_questions_or_options(response):
+                    debug_log("Found questions/options in AI response")
+                    return await self._handle_ai_questions(response)
                 else:
+                    debug_log("Regular AI response, returning as-is")
                     output += response
                     output += "\n"
                     return output
@@ -251,6 +255,70 @@ awesh: <command>"""
         except Exception as e:
             debug_log(f"Error requesting alternatives: {e}")
             return f"❌ All commands failed:\n{failed_list}\n"
+    
+    async def _contains_questions_or_options(self, response: str) -> bool:
+        """Check if AI response contains questions or multiple options"""
+        import re
+        
+        # Look for common question patterns
+        question_patterns = [
+            r'\?',  # Contains question mark
+            r'Which.*do you want',  # "Which do you want"
+            r'Do you want to',  # "Do you want to"
+            r'Would you like to',  # "Would you like to"
+            r'Please specify',  # "Please specify"
+            r'Could you clarify',  # "Could you clarify"
+            r'What.*do you mean',  # "What do you mean"
+            r'Here are.*options?:',  # "Here are some options:"
+            r'\d+\.\s',  # Numbered list (1. 2. 3.)
+            r'^[a-zA-Z]\)\s',  # Lettered list (a) b) c))
+            r'Choose from:',  # "Choose from:"
+            r'Select.*option',  # "Select an option"
+        ]
+        
+        for pattern in question_patterns:
+            if re.search(pattern, response, re.IGNORECASE | re.MULTILINE):
+                debug_log(f"Found question pattern: {pattern}")
+                return True
+                
+        return False
+    
+    async def _handle_ai_questions(self, ai_response: str) -> str:
+        """Handle AI questions/options by presenting them to user for selection"""
+        import re
+        
+        debug_log("Processing AI questions/options")
+        
+        # Extract numbered or lettered options
+        options = []
+        
+        # Look for numbered options (1. 2. 3.)
+        numbered_options = re.findall(r'(\d+\.\s*[^\n]+)', ai_response)
+        if numbered_options:
+            options.extend(numbered_options)
+            debug_log(f"Found {len(numbered_options)} numbered options")
+        
+        # Look for lettered options (a) b) c))
+        lettered_options = re.findall(r'([a-zA-Z]\)\s*[^\n]+)', ai_response)
+        if lettered_options:
+            options.extend(lettered_options)
+            debug_log(f"Found {len(lettered_options)} lettered options")
+        
+        if options:
+            debug_log(f"Found {len(options)} total options, presenting to user")
+            
+            # Format options for user selection
+            formatted_response = f"🤖 {ai_response}\n\n"
+            formatted_response += "💡 Please type the number or letter of your choice, or describe what you want:\n"
+            
+            for i, option in enumerate(options, 1):
+                formatted_response += f"   {option}\n"
+            
+            return formatted_response
+        else:
+            # No clear options found, but response seems to be a question
+            debug_log("No clear options found, returning question as-is")
+            return f"🤖 {ai_response}\n\n💡 Please provide more details or clarify your request.\n"
     
     async def handle_client(self, client_socket):
         """Handle client connection"""
