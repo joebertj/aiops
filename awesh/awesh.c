@@ -371,6 +371,18 @@ int main() {
     
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
+    
+    // Show API provider and model info
+    const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+    const char* model = NULL;
+    
+    if (strcmp(ai_provider, "openrouter") == 0) {
+        model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
+    } else {
+        model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
+    }
+    
+    printf("🤖 API: %s | Model: %s\n", ai_provider, model);
     printf("💡 Type 'aweh' to see available control commands\n\n");
     
     if (start_backend() != 0) {
