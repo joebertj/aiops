@@ -91,8 +91,10 @@ awesh> why did the build fail?             # → AI interpretation
 
 **🔧 Installation:**
 ```bash
-cd awesh/
-./install.sh
+# Use deployment MCP for installation (git pull + deploy)
+cd deployment/
+python3 deployment_mcp.py install
+
 # Configure your OpenAI API key in ~/.aweshrc
 awesh
 ```
@@ -183,15 +185,15 @@ aiops/
 ### Install awesh - AIWES (Awe-Inspired Workspace Environment Shell)
 
 ```bash
-cd awesh/
-./install.sh
+# Use deployment MCP for installation (git pull + deploy)
+cd deployment/
+python3 deployment_mcp.py install
 ```
 
-Or install manually:
+Or for development (build + git push):
 ```bash
-cd awesh/
-pip install -e .
-awesh
+cd deployment/
+python3 deployment_mcp.py clean_install
 ```
 
 ### Try Kubernetes MCP Server
