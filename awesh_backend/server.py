@@ -125,9 +125,37 @@ class AweshSocketBackend:
                 return "❌ AI not ready yet - still loading models\n"
         
         try:
-            # For now, return a simple response to test if the issue is with OpenAI API
-            return f"🤖 AI received: {prompt}\n(OpenAI integration temporarily disabled for debugging)\n"
+            # Give AI full context
+            if bash_result:
+                ai_input = f"""User command: {prompt}
+Bash result:
+- Exit code: {bash_result.get('exit_code', 0)}
+- Stdout: {bash_result.get('stdout', '')}
+- Stderr: {bash_result.get('stderr', '')}
+
+Process this and respond appropriately."""
+            else:
+                ai_input = prompt
             
+            # Collect response with timeout (compatible with older Python)
+            output = "🤖 "
+            try:
+                async def collect_response():
+                    result = ""
+                    async for chunk in self.ai_client.process_prompt(ai_input):
+                        result += chunk
+                    return result
+                
+                response = await asyncio.wait_for(collect_response(), timeout=25)
+                output += response
+                output += "\n"
+                return output
+            except asyncio.TimeoutError:
+                return f"❌ AI response timeout - request took too long\n"
+            except Exception as stream_error:
+                # If streaming fails, try non-streaming fallback
+                return f"❌ AI streaming error: {stream_error}\n"
+                
         except Exception as e:
             return f"❌ AI error: {e}\n"
     
