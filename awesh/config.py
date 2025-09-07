@@ -7,6 +7,7 @@ import configparser
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+from dotenv import load_dotenv
 
 
 @dataclass
@@ -39,8 +40,17 @@ class Config:
     
     @classmethod
     def load(cls, config_path: Path) -> 'Config':
-        """Load configuration from file"""
+        """Load configuration from file and environment variables"""
         config = cls()
+        
+        # Load environment variables from .env file if it exists
+        env_file = Path(__file__).parent / '.env'
+        if env_file.exists():
+            load_dotenv(env_file)
+        
+        # Override model from environment variable if set
+        if os.getenv('OPENAI_MODEL'):
+            config.model = os.getenv('OPENAI_MODEL')
         
         if not config_path.exists():
             # Create default config file
