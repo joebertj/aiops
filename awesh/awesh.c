@@ -295,7 +295,11 @@ void send_command(const char* cmd) {
 int is_builtin(const char* cmd) {
     return (strncmp(cmd, "cd ", 3) == 0 || 
             strcmp(cmd, "pwd") == 0 || 
-            strcmp(cmd, "exit") == 0);
+            strcmp(cmd, "exit") == 0 ||
+            strcmp(cmd, "verbose") == 0 ||
+            strcmp(cmd, "verbose on") == 0 ||
+            strcmp(cmd, "verbose off") == 0 ||
+            strcmp(cmd, "verbose status") == 0);
 }
 
 void handle_builtin(const char* cmd) {
