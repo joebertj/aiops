@@ -101,8 +101,8 @@ class AweshSocketBackend:
                     result += bash_result["stderr"]
                 return result
             else:
-                # Pure AI prompt but AI not ready - silent failure
-                return ""
+                # Pure AI prompt but AI not ready
+                return "❌ AI not ready yet - still loading models\n"
         
         try:
             # Give AI full context
@@ -117,40 +117,60 @@ Process this and respond appropriately."""
             else:
                 ai_input = prompt
             
+            # Collect response with timeout
             output = "🤖 "
-            async for chunk in self.ai_client.process_prompt(ai_input):
-                output += chunk
-            output += "\n"
-            
-            return output
+            try:
+                # Add timeout to prevent hanging
+                async with asyncio.timeout(25):  # 25 second timeout
+                    async for chunk in self.ai_client.process_prompt(ai_input):
+                        output += chunk
+                output += "\n"
+                return output
+            except asyncio.TimeoutError:
+                return f"❌ AI response timeout - request took too long\n"
+            except Exception as stream_error:
+                # If streaming fails, try non-streaming fallback
+                return f"❌ AI streaming error: {stream_error}\n"
+                
         except Exception as e:
             return f"❌ AI error: {e}\n"
     
     async def handle_client(self, client_socket):
         """Handle client connection"""
         try:
+            # Set socket to non-blocking mode
+            client_socket.setblocking(False)
+            
             while True:
-                # Receive command
-                data = client_socket.recv(4096).decode('utf-8')
-                if not data:
-                    break
-                
-                command = data.strip()
-                if not command:
-                    continue
-                
-                # Handle status requests
-                if command == "STATUS":
-                    if self.ai_ready:
-                        response = "AI_READY"
+                # Receive command using asyncio
+                loop = asyncio.get_event_loop()
+                try:
+                    data = await loop.sock_recv(client_socket, 4096)
+                    if not data:
+                        break
+                    
+                    command = data.decode('utf-8').strip()
+                    if not command:
+                        continue
+                    
+                    # Handle status requests
+                    if command == "STATUS":
+                        if self.ai_ready:
+                            response = "AI_READY"
+                        else:
+                            response = "AI_LOADING"
                     else:
-                        response = "AI_LOADING"
-                else:
-                    # Process regular command
-                    response = await self.process_command(command)
-                
-                # Send response
-                client_socket.send(response.encode('utf-8'))
+                        # Process regular command
+                        response = await self.process_command(command)
+                    
+                    # Send response using asyncio
+                    await loop.sock_sendall(client_socket, response.encode('utf-8'))
+                    
+                except ConnectionResetError:
+                    break
+                except Exception as e:
+                    print(f"Command processing error: {e}", file=sys.stderr)
+                    break
                 
         except Exception as e:
             print(f"Client handler error: {e}", file=sys.stderr)
@@ -175,10 +195,14 @@ Process this and respond appropriately."""
         # Start AI initialization in background
         asyncio.create_task(self.initialize())
         
+        # Set server socket to non-blocking
+        self.socket.setblocking(False)
+        
         # Accept connections
+        loop = asyncio.get_event_loop()
         while True:
             try:
-                client_socket, _ = self.socket.accept()
+                client_socket, _ = await loop.sock_accept(self.socket)
                 print("Backend: Client connected", file=sys.stderr)
                 
                 # Handle client in background

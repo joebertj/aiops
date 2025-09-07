@@ -24,6 +24,8 @@ awesh_backend.egg-info/entry_points.txt
 awesh_backend.egg-info/requires.txt
 awesh_backend.egg-info/top_level.txt
 credential_store/__init__.py
+deployment/__init__.py
+deployment/deployment_mcp.py
 executor/__init__.py
 interaction/__init__.py
 nlp/__init__.py

@@ -1,28 +1,17 @@
 #!/usr/bin/env python3
 """
-Deployment MCP Server for awesh
-Handles syntax checking, building, killing processes, and deployment
+Simple deployment script for awesh
+Usage: python3 deploy.py [command]
+Commands: syntax_check, build, kill, deploy, test, full_deploy
 """
 
-import asyncio
-import json
-import logging
 import os
 import subprocess
 import signal
+import time
 import psutil
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
-
-# MCP imports
-import mcp.types as types
-from mcp.server import NotificationOptions, Server
-from mcp.server.models import InitializationOptions
-import mcp.server.stdio
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("awesh-deployment")
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -30,263 +19,91 @@ AWESH_DIR = PROJECT_ROOT / "awesh"
 BACKEND_DIR = PROJECT_ROOT / "awesh_backend"
 INSTALL_PATH = Path.home() / ".local" / "bin" / "awesh"
 
-server = Server("awesh-deployment")
+def log(message):
+    """Log a message"""
+    print(message)
 
-@server.list_tools()
-async def handle_list_tools() -> List[types.Tool]:
-    """List available deployment tools"""
-    return [
-        types.Tool(
-            name="syntax_check",
-            description="Check C code syntax and Python code style",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "component": {
-                        "type": "string",
-                        "enum": ["c", "python", "all"],
-                        "description": "Component to check (c, python, or all)"
-                    }
-                },
-                "required": ["component"]
-            }
-        ),
-        types.Tool(
-            name="build",
-            description="Build awesh C frontend and Python backend",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "clean": {
-                        "type": "boolean",
-                        "description": "Clean build (make clean first)",
-                        "default": False
-                    },
-                    "verbose": {
-                        "type": "boolean", 
-                        "description": "Verbose build output",
-                        "default": False
-                    }
-                }
-            }
-        ),
-        types.Tool(
-            name="kill_processes",
-            description="Kill running awesh processes and clean up sockets",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "force": {
-                        "type": "boolean",
-                        "description": "Force kill processes (SIGKILL)",
-                        "default": False
-                    }
-                }
-            }
-        ),
-        types.Tool(
-            name="deploy",
-            description="Deploy awesh binary and backend to ~/.local/bin",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "backup": {
-                        "type": "boolean",
-                        "description": "Backup existing installation",
-                        "default": True
-                    }
-                }
-            }
-        ),
-        types.Tool(
-            name="test_deployment",
-            description="Test deployed awesh installation",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "timeout": {
-                        "type": "integer",
-                        "description": "Test timeout in seconds",
-                        "default": 30
-                    }
-                }
-            }
-        ),
-        types.Tool(
-            name="full_deploy",
-            description="Complete deployment pipeline: syntax check -> build -> kill -> deploy -> test",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "skip_tests": {
-                        "type": "boolean",
-                        "description": "Skip deployment tests",
-                        "default": False
-                    }
-                }
-            }
-        )
-    ]
+def syntax_check():
+    """Check C and Python syntax"""
+    log("🔍 Checking C syntax...")
+    
+    # Check C files
+    c_files = list(AWESH_DIR.glob("*.c"))
+    for c_file in c_files:
+        try:
+            result = subprocess.run([
+                "gcc", "-fsyntax-only", "-Wall", "-Wextra", "-std=c99",
+                str(c_file)
+            ], capture_output=True, text=True, cwd=AWESH_DIR)
+            
+            if result.returncode == 0:
+                log(f"✅ {c_file.name}: Syntax OK")
+            else:
+                log(f"❌ {c_file.name}: Syntax errors:\n{result.stderr}")
+                return False
+        except Exception as e:
+            log(f"❌ Error checking {c_file.name}: {e}")
+            return False
+    
+    log("🔍 Checking Python syntax...")
+    
+    # Check Python files
+    py_files = list(BACKEND_DIR.glob("*.py"))
+    for py_file in py_files:
+        try:
+            with open(py_file, 'r') as f:
+                compile(f.read(), py_file, 'exec')
+            log(f"✅ {py_file.name}: Syntax OK")
+        except SyntaxError as e:
+            log(f"❌ {py_file.name}: Syntax error: {e}")
+            return False
+        except Exception as e:
+            log(f"❌ Error checking {py_file.name}: {e}")
+            return False
+    
+    return True
 
-@server.call_tool()
-async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
-    """Handle tool calls"""
-    
-    if name == "syntax_check":
-        return await syntax_check(arguments.get("component", "all"))
-    
-    elif name == "build":
-        return await build_project(
-            clean=arguments.get("clean", False),
-            verbose=arguments.get("verbose", False)
-        )
-    
-    elif name == "kill_processes":
-        return await kill_awesh_processes(arguments.get("force", False))
-    
-    elif name == "deploy":
-        return await deploy_awesh(arguments.get("backup", True))
-    
-    elif name == "test_deployment":
-        return await test_deployment(arguments.get("timeout", 30))
-    
-    elif name == "full_deploy":
-        return await full_deployment_pipeline(arguments.get("skip_tests", False))
-    
-    else:
-        raise ValueError(f"Unknown tool: {name}")
-
-async def syntax_check(component: str) -> List[types.TextContent]:
-    """Check syntax for C and/or Python code"""
-    results = []
-    
-    if component in ["c", "all"]:
-        # Check C syntax
-        results.append(types.TextContent(type="text", text="🔍 Checking C syntax..."))
-        
-        c_files = list(AWESH_DIR.glob("*.c"))
-        for c_file in c_files:
-            try:
-                # Use gcc -fsyntax-only for syntax checking
-                result = subprocess.run([
-                    "gcc", "-fsyntax-only", "-Wall", "-Wextra", "-std=c99",
-                    str(c_file)
-                ], capture_output=True, text=True, cwd=AWESH_DIR)
-                
-                if result.returncode == 0:
-                    results.append(types.TextContent(
-                        type="text", 
-                        text=f"✅ {c_file.name}: Syntax OK"
-                    ))
-                else:
-                    results.append(types.TextContent(
-                        type="text", 
-                        text=f"❌ {c_file.name}: Syntax errors:\n{result.stderr}"
-                    ))
-            except Exception as e:
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"❌ Error checking {c_file.name}: {e}"
-                ))
-    
-    if component in ["python", "all"]:
-        # Check Python syntax and style
-        results.append(types.TextContent(type="text", text="🔍 Checking Python syntax..."))
-        
-        py_files = list(BACKEND_DIR.glob("*.py"))
-        for py_file in py_files:
-            try:
-                # Compile Python file to check syntax
-                with open(py_file, 'r') as f:
-                    compile(f.read(), py_file, 'exec')
-                
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"✅ {py_file.name}: Syntax OK"
-                ))
-            except SyntaxError as e:
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"❌ {py_file.name}: Syntax error: {e}"
-                ))
-            except Exception as e:
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"❌ Error checking {py_file.name}: {e}"
-                ))
-    
-    return results
-
-async def build_project(clean: bool = False, verbose: bool = False) -> List[types.TextContent]:
-    """Build the awesh project"""
-    results = []
-    
+def build_project(clean=False):
+    """Build awesh project"""
     try:
-        # Clean if requested
         if clean:
-            results.append(types.TextContent(type="text", text="🧹 Cleaning build..."))
-            result = subprocess.run(
-                ["make", "clean"], 
-                capture_output=True, text=True, cwd=AWESH_DIR
-            )
+            log("🧹 Cleaning build...")
+            result = subprocess.run(["make", "clean"], capture_output=True, text=True, cwd=AWESH_DIR)
             if result.returncode != 0:
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"❌ Clean failed: {result.stderr}"
-                ))
-                return results
+                log(f"❌ Clean failed: {result.stderr}")
+                return False
         
-        # Build C frontend
-        results.append(types.TextContent(type="text", text="🔨 Building C frontend..."))
-        make_cmd = ["make"]
-        if verbose:
-            make_cmd.append("V=1")
-        
-        result = subprocess.run(
-            make_cmd,
-            capture_output=True, text=True, cwd=AWESH_DIR
-        )
+        log("🔨 Building C frontend...")
+        result = subprocess.run(["make"], capture_output=True, text=True, cwd=AWESH_DIR)
         
         if result.returncode == 0:
-            results.append(types.TextContent(type="text", text="✅ C frontend built successfully"))
-            if verbose and result.stdout:
-                results.append(types.TextContent(type="text", text=f"Build output:\n{result.stdout}"))
+            log("✅ C frontend built successfully")
         else:
-            results.append(types.TextContent(
-                type="text",
-                text=f"❌ C build failed:\n{result.stderr}"
-            ))
-            return results
+            log(f"❌ C build failed:\n{result.stderr}")
+            return False
         
-        # Install Python backend
-        results.append(types.TextContent(type="text", text="📦 Installing Python backend..."))
+        log("📦 Installing Python backend...")
         result = subprocess.run([
             "pip3", "install", "--user", "-e", "."
         ], capture_output=True, text=True, cwd=PROJECT_ROOT)
         
         if result.returncode == 0:
-            results.append(types.TextContent(type="text", text="✅ Python backend installed"))
+            log("✅ Python backend installed")
         else:
-            results.append(types.TextContent(
-                type="text",
-                text=f"❌ Python backend install failed:\n{result.stderr}"
-            ))
+            log(f"❌ Python backend install failed:\n{result.stderr}")
+            return False
+        
+        return True
     
     except Exception as e:
-        results.append(types.TextContent(
-            type="text",
-            text=f"❌ Build error: {e}"
-        ))
-    
-    return results
+        log(f"❌ Build error: {e}")
+        return False
 
-async def kill_awesh_processes(force: bool = False) -> List[types.TextContent]:
-    """Kill running awesh processes and clean up"""
-    results = []
+def kill_processes(force=False):
+    """Kill running awesh processes"""
     killed_processes = []
     
     try:
-        # Find awesh processes
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 if proc.info['name'] == 'awesh' or \
@@ -297,16 +114,10 @@ async def kill_awesh_processes(force: bool = False) -> List[types.TextContent]:
                     
                     if force:
                         os.kill(pid, signal.SIGKILL)
-                        results.append(types.TextContent(
-                            type="text",
-                            text=f"💀 Force killed {name} (PID: {pid})"
-                        ))
+                        log(f"💀 Force killed {name} (PID: {pid})")
                     else:
                         os.kill(pid, signal.SIGTERM)
-                        results.append(types.TextContent(
-                            type="text", 
-                            text=f"🛑 Terminated {name} (PID: {pid})"
-                        ))
+                        log(f"🛑 Terminated {name} (PID: {pid})")
                     
                     killed_processes.append(pid)
             
@@ -314,10 +125,7 @@ async def kill_awesh_processes(force: bool = False) -> List[types.TextContent]:
                 continue
         
         if not killed_processes:
-            results.append(types.TextContent(
-                type="text",
-                text="ℹ️  No awesh processes found running"
-            ))
+            log("ℹ️  No awesh processes found running")
         
         # Clean up socket files
         socket_paths = [
@@ -328,31 +136,21 @@ async def kill_awesh_processes(force: bool = False) -> List[types.TextContent]:
         for socket_path in socket_paths:
             if socket_path.exists():
                 socket_path.unlink()
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"🧹 Removed socket: {socket_path}"
-                ))
+                log(f"🧹 Removed socket: {socket_path}")
         
-        # Wait a moment for processes to clean up
         if killed_processes:
-            await asyncio.sleep(1)
-            results.append(types.TextContent(
-                type="text",
-                text="✅ Process cleanup complete"
-            ))
+            import time
+            time.sleep(1)
+            log("✅ Process cleanup complete")
+        
+        return True
     
     except Exception as e:
-        results.append(types.TextContent(
-            type="text",
-            text=f"❌ Error killing processes: {e}"
-        ))
-    
-    return results
+        log(f"❌ Error killing processes: {e}")
+        return False
 
-async def deploy_awesh(backup: bool = True) -> List[types.TextContent]:
+def deploy_binary(backup=True):
     """Deploy awesh binary to ~/.local/bin"""
-    results = []
-    
     try:
         # Create ~/.local/bin if it doesn't exist
         install_dir = Path.home() / ".local" / "bin"
@@ -362,211 +160,292 @@ async def deploy_awesh(backup: bool = True) -> List[types.TextContent]:
         if backup and INSTALL_PATH.exists():
             backup_path = INSTALL_PATH.with_suffix('.bak')
             INSTALL_PATH.rename(backup_path)
-            results.append(types.TextContent(
-                type="text",
-                text=f"💾 Backed up existing awesh to {backup_path}"
-            ))
+            log(f"💾 Backed up existing awesh to {backup_path}")
         
         # Copy new binary
         binary_path = AWESH_DIR / "awesh"
         if not binary_path.exists():
-            results.append(types.TextContent(
-                type="text",
-                text="❌ awesh binary not found. Run build first."
-            ))
-            return results
+            log("❌ awesh binary not found. Run build first.")
+            return False
         
         import shutil
         shutil.copy2(binary_path, INSTALL_PATH)
         INSTALL_PATH.chmod(0o755)
         
-        results.append(types.TextContent(
-            type="text",
-            text=f"✅ Deployed awesh to {INSTALL_PATH}"
-        ))
+        log(f"✅ Deployed awesh to {INSTALL_PATH}")
         
         # Verify deployment
         if INSTALL_PATH.exists() and os.access(INSTALL_PATH, os.X_OK):
-            results.append(types.TextContent(
-                type="text",
-                text="✅ Binary is executable and ready"
-            ))
+            log("✅ Binary is executable and ready")
+            return True
         else:
-            results.append(types.TextContent(
-                type="text",
-                text="❌ Deployment verification failed"
-            ))
+            log("❌ Deployment verification failed")
+            return False
     
     except Exception as e:
-        results.append(types.TextContent(
-            type="text",
-            text=f"❌ Deployment error: {e}"
-        ))
-    
-    return results
+        log(f"❌ Deployment error: {e}")
+        return False
 
-async def test_deployment(timeout: int = 30) -> List[types.TextContent]:
-    """Test the deployed awesh installation"""
-    results = []
+def test_backend_sanity():
+    """Test backend socket communication sanity"""
+    import socket
+    import time
+    import threading
+    
+    log("🧪 Testing backend socket communication...")
     
     try:
-        # Check if binary exists and is executable
-        if not INSTALL_PATH.exists():
-            results.append(types.TextContent(
-                type="text",
-                text="❌ awesh binary not found at ~/.local/bin/awesh"
-            ))
-            return results
+        # Start backend in background
+        backend_proc = subprocess.Popen([
+            "python3", "-m", "awesh_backend"
+        ], cwd=PROJECT_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
-        if not os.access(INSTALL_PATH, os.X_OK):
-            results.append(types.TextContent(
-                type="text", 
-                text="❌ awesh binary is not executable"
-            ))
-            return results
+        # Wait for backend to start
+        time.sleep(2)
         
-        results.append(types.TextContent(
-            type="text",
-            text="✅ Binary exists and is executable"
-        ))
+        # Test socket connection
+        socket_path = Path.home() / ".awesh.sock"
+        if not socket_path.exists():
+            log("❌ Backend socket not created")
+            backend_proc.terminate()
+            return False
         
-        # Test that it can start (without hanging)
-        results.append(types.TextContent(
-            type="text",
-            text="🧪 Testing startup (this may take a moment)..."
-        ))
-        
-        # Start awesh with a timeout and send exit command
-        proc = await asyncio.create_subprocess_exec(
-            str(INSTALL_PATH),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        # Connect and test
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5)  # 5 second timeout
         
         try:
-            # Send exit command after a brief delay
-            await asyncio.sleep(2)
-            proc.stdin.write(b"exit\n")
-            await proc.stdin.drain()
+            sock.connect(str(socket_path))
+            log("✅ Socket connection successful")
             
-            # Wait for process to exit
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
-            
-            if proc.returncode == 0:
-                results.append(types.TextContent(
-                    type="text",
-                    text="✅ awesh starts and exits cleanly"
-                ))
+            # Test STATUS command
+            sock.send(b"STATUS")
+            response = sock.recv(1024).decode('utf-8')
+            if response in ["AI_READY", "AI_LOADING"]:
+                log(f"✅ STATUS command works: {response}")
             else:
-                results.append(types.TextContent(
-                    type="text",
-                    text=f"⚠️  awesh exited with code {proc.returncode}"
-                ))
-                if stderr:
-                    results.append(types.TextContent(
-                        type="text",
-                        text=f"stderr: {stderr.decode()}"
-                    ))
+                log(f"❌ Unexpected STATUS response: {response}")
+                return False
+            
+            # Test simple command
+            sock.send(b"echo test")
+            sock.settimeout(10)  # Give more time for command
+            response = sock.recv(4096).decode('utf-8')
+            if "test" in response:
+                log("✅ Command execution works")
+            else:
+                log(f"❌ Command failed or no response: {response}")
+                return False
+            
+        except socket.timeout:
+            log("❌ Socket communication timeout - backend hanging")
+            return False
+        except Exception as e:
+            log(f"❌ Socket communication error: {e}")
+            return False
+        finally:
+            sock.close()
+            backend_proc.terminate()
+            backend_proc.wait()
         
-        except asyncio.TimeoutError:
-            proc.kill()
-            results.append(types.TextContent(
-                type="text",
-                text="❌ Test timed out - awesh may be hanging"
-            ))
+        log("✅ Backend sanity test passed")
+        return True
         
     except Exception as e:
-        results.append(types.TextContent(
-            type="text",
-            text=f"❌ Test error: {e}"
-        ))
-    
-    return results
+        log(f"❌ Backend sanity test error: {e}")
+        if 'backend_proc' in locals():
+            backend_proc.terminate()
+        return False
 
-async def full_deployment_pipeline(skip_tests: bool = False) -> List[types.TextContent]:
-    """Complete deployment pipeline"""
-    results = []
+def test_deployment():
+    """Test the deployed awesh installation"""
+    try:
+        if not INSTALL_PATH.exists():
+            log("❌ awesh binary not found at ~/.local/bin/awesh")
+            return False
+        
+        if not os.access(INSTALL_PATH, os.X_OK):
+            log("❌ awesh binary is not executable")
+            return False
+        
+        log("✅ Binary exists and is executable")
+        
+        # Test backend sanity
+        if not test_backend_sanity():
+            log("❌ Backend sanity test failed")
+            return False
+        
+        log("✅ Deployment test passed")
+        return True
     
-    results.append(types.TextContent(
-        type="text",
-        text="🚀 Starting full deployment pipeline..."
-    ))
+    except Exception as e:
+        log(f"❌ Test error: {e}")
+        return False
+
+def git_pull():
+    """Pull latest changes from git"""
+    try:
+        log("📥 Git: Pulling latest changes...")
+        result = subprocess.run([
+            "git", "pull"
+        ], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            log(f"❌ Git pull failed: {result.stderr}")
+            return False
+        
+        log("✅ Git pull successful")
+        return True
+        
+    except Exception as e:
+        log(f"❌ Git pull error: {e}")
+        return False
+
+def git_commit_and_push():
+    """Commit changes and push to git"""
+    try:
+        log("📝 Git: Adding changes...")
+        result = subprocess.run([
+            "git", "add", "."
+        ], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            log(f"❌ Git add failed: {result.stderr}")
+            return False
+        
+        # Check if there are changes to commit
+        result = subprocess.run([
+            "git", "status", "--porcelain"
+        ], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        
+        if not result.stdout.strip():
+            log("✅ No changes to commit")
+            return True
+        
+        log("📝 Git: Committing changes...")
+        commit_msg = f"Build awesh - {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        result = subprocess.run([
+            "git", "commit", "-m", commit_msg
+        ], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            log(f"❌ Git commit failed: {result.stderr}")
+            return False
+        
+        log("📝 Git: Pushing to remote...")
+        result = subprocess.run([
+            "git", "push"
+        ], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            log(f"❌ Git push failed: {result.stderr}")
+            return False
+        
+        log("✅ Changes committed and pushed successfully")
+        return True
+        
+    except Exception as e:
+        log(f"❌ Git operation error: {e}")
+        return False
+
+def build_ci(skip_tests=False):
+    """CI Build Pipeline: checks, bins, git push"""
+    log("🚀 Starting CI build pipeline...")
     
     # Step 1: Syntax check
-    results.append(types.TextContent(type="text", text="\n📋 Step 1: Syntax Check"))
-    syntax_results = await syntax_check("all")
-    results.extend(syntax_results)
+    log("\n📋 Step 1: Syntax Check")
+    if not syntax_check():
+        log("❌ Build aborted due to syntax errors")
+        return False
     
-    # Check if syntax check passed
-    if any("❌" in r.text for r in syntax_results):
-        results.append(types.TextContent(
-            type="text",
-            text="❌ Deployment aborted due to syntax errors"
-        ))
-        return results
+    # Step 2: Build binaries
+    log("\n🔨 Step 2: Build Binaries")
+    if not build_project(clean=True):
+        log("❌ Build aborted due to build errors")
+        return False
+    
+    # Step 3: Git commit and push
+    log("\n📝 Step 3: Git Commit & Push")
+    if not git_commit_and_push():
+        log("❌ Git operations failed")
+        return False
+    
+    log("\n🎉 CI build pipeline completed successfully!")
+    return True
+
+def install_deploy(skip_tests=False):
+    """Production Install Pipeline: git pull, skip build, kills procs, copies"""
+    log("🚀 Starting production install pipeline...")
+    
+    # Step 1: Git pull latest
+    log("\n📥 Step 1: Git Pull Latest")
+    if not git_pull():
+        log("❌ Install aborted - git pull failed")
+        return False
     
     # Step 2: Kill existing processes
-    results.append(types.TextContent(type="text", text="\n🛑 Step 2: Kill Existing Processes"))
-    kill_results = await kill_awesh_processes(force=False)
-    results.extend(kill_results)
+    log("\n🛑 Step 2: Kill Existing Processes")
+    kill_processes(force=False)
     
-    # Step 3: Build
-    results.append(types.TextContent(type="text", text="\n🔨 Step 3: Build"))
-    build_results = await build_project(clean=True, verbose=False)
-    results.extend(build_results)
+    # Step 3: Copy/Deploy binaries (no build)
+    log("\n📦 Step 3: Copy Binaries")
+    if not deploy_binary(backup=True):
+        log("❌ Installation failed")
+        return False
     
-    # Check if build passed
-    if any("❌" in r.text for r in build_results):
-        results.append(types.TextContent(
-            type="text",
-            text="❌ Deployment aborted due to build errors"
-        ))
-        return results
-    
-    # Step 4: Deploy
-    results.append(types.TextContent(type="text", text="\n📦 Step 4: Deploy"))
-    deploy_results = await deploy_awesh(backup=True)
-    results.extend(deploy_results)
-    
-    # Check if deploy passed
-    if any("❌" in r.text for r in deploy_results):
-        results.append(types.TextContent(
-            type="text",
-            text="❌ Deployment failed"
-        ))
-        return results
-    
-    # Step 5: Test (optional)
-    if not skip_tests:
-        results.append(types.TextContent(type="text", text="\n🧪 Step 5: Test Deployment"))
-        test_results = await test_deployment(timeout=30)
-        results.extend(test_results)
-    
-    results.append(types.TextContent(
-        type="text",
-        text="\n🎉 Deployment pipeline completed successfully!"
-    ))
-    
-    return results
+    log("\n🎉 Production install completed successfully!")
+    return True
 
-async def main():
-    # Run the server using stdin/stdout streams
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="awesh-deployment",
-                server_version="0.1.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+def main():
+    """Main entry point"""
+    if len(sys.argv) < 2:
+        log("Usage: python3 deployment_mcp.py [command]")
+        log("\nCI/CD Commands:")
+        log("  build          - CI pipeline: checks, bins, git push")
+        log("  install        - Deploy pipeline: git pull, skip build, kills procs, copies")
+        log("\nIndividual Commands:")
+        log("  syntax_check   - Check C and Python syntax")
+        log("  build_only     - Build awesh (incremental)")
+        log("  build_clean    - Build awesh (clean)")
+        log("  kill           - Kill running awesh processes")
+        log("  kill_force     - Force kill processes (SIGKILL)")
+        log("  deploy_only    - Deploy binary to ~/.local/bin")
+        log("  test           - Test deployment and backend")
+        log("  git_pull       - Pull latest changes from git")
+        log("  git_push       - Commit and push changes to git")
+        return
+    
+    command = sys.argv[1]
+    
+    # CI/CD Commands
+    if command == "build":
+        build_ci(skip_tests=False)
+    elif command == "install":
+        install_deploy(skip_tests=False)
+    
+    # Individual Commands
+    elif command == "syntax_check":
+        syntax_check()
+    elif command == "build_only":
+        build_project(clean=False)
+    elif command == "build_clean":
+        build_project(clean=True)
+    elif command == "kill":
+        kill_processes(force=False)
+    elif command == "kill_force":
+        kill_processes(force=True)
+    elif command == "deploy_only":
+        kill_processes(force=False)  # Kill running processes first
+        deploy_binary(backup=True)
+    elif command == "test":
+        test_deployment()
+    elif command == "git_pull":
+        git_pull()
+    elif command == "git_push":
+        git_commit_and_push()
+    else:
+        log(f"❌ Unknown command: {command}")
+        log("Run 'python3 deployment_mcp.py' for usage help")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

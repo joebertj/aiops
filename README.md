@@ -306,6 +306,150 @@ Your Kubernetes MCP server has access to the full Kubernetes API surface:
 - "List all storage classes"
 - "Show RBAC roles in kube-system"
 
+## 🚀 Deployment MCP
+
+The Deployment MCP provides comprehensive CI/CD automation for awesh with two main modes: **CI Build** (development) and **Production Install** (deployment). It handles complete pipelines with syntax checking, process management, git operations, and sanity testing.
+
+### Features
+
+- **🏗️ CI/CD Pipelines**: Separate build (CI) and install (deploy) workflows
+- **🔍 Syntax Checking**: Validates C code and Python code before deployment
+- **🔨 Build Management**: Clean builds, compilation with proper flags
+- **🛑 Process Management**: Kill running awesh processes and clean up sockets  
+- **📦 Deployment**: Install binaries to `~/.local/bin` with backup
+- **🧪 Sanity Testing**: Test socket communication and backend functionality
+- **📝 Git Integration**: Automated git pull, commit, and push operations
+
+### Usage
+
+The Deployment MCP is a standalone Python script that doesn't require external MCP libraries:
+
+```bash
+cd deployment/
+python3 deployment_mcp.py [command]
+```
+
+### Available Commands
+
+#### CI/CD Pipelines
+```bash
+# CI Build Pipeline (Development)
+# Checks → Bins → Git push
+python3 deployment_mcp.py build
+
+# Production Install Pipeline (Deployment)  
+# Git pull → Skip build → Kill procs → Copies
+python3 deployment_mcp.py install
+```
+
+#### Individual Operations
+```bash
+# Check syntax for C and Python code
+python3 deployment_mcp.py syntax_check
+
+# Build awesh (incremental)
+python3 deployment_mcp.py build_only
+
+# Build awesh (clean build)
+python3 deployment_mcp.py build_clean
+
+# Kill running awesh processes
+python3 deployment_mcp.py kill
+
+# Force kill processes (SIGKILL)
+python3 deployment_mcp.py kill_force
+
+# Deploy binary to ~/.local/bin
+python3 deployment_mcp.py deploy_only
+
+# Test deployment and backend communication
+python3 deployment_mcp.py test
+
+# Git operations
+python3 deployment_mcp.py git_pull   # Pull latest changes
+python3 deployment_mcp.py git_push   # Commit and push changes
+```
+
+### Pipeline Workflows
+
+#### CI Build Pipeline (`build`)
+*For development - checks, bins, git push*
+
+1. **📋 Checks**: Validates all C and Python code syntax
+2. **🔨 Bins**: Clean build of C frontend + Python backend installation  
+3. **📝 Git Push**: Commit changes and push to repository
+
+#### Production Install Pipeline (`install`)
+*For deployment - git pull, skip build, kills procs, copies*
+
+1. **📥 Git Pull**: Pull latest changes from repository
+2. **🛑 Kill Procs**: Terminates existing awesh processes
+3. **📦 Copies**: Install binary to `~/.local/bin` with backup
+
+### Example Output
+
+```bash
+$ python3 deployment_mcp.py full_deploy
+🚀 Starting full deployment pipeline...
+
+📋 Step 1: Syntax Check
+🔍 Checking C syntax...
+✅ awesh.c: Syntax OK
+🔍 Checking Python syntax...  
+✅ server.py: Syntax OK
+✅ ai_client.py: Syntax OK
+
+🛑 Step 2: Kill Existing Processes
+🛑 Terminated awesh (PID: 12345)
+🧹 Removed socket: /home/user/.awesh.sock
+
+🔨 Step 3: Build
+🧹 Cleaning build...
+🔨 Building C frontend...
+✅ C frontend built successfully
+📦 Installing Python backend...
+✅ Python backend installed
+
+📦 Step 4: Deploy
+💾 Backed up existing awesh to /home/user/.local/bin/awesh.bak
+✅ Deployed awesh to /home/user/.local/bin/awesh
+✅ Binary is executable and ready
+
+🧪 Step 5: Test Deployment
+✅ Binary exists and is executable
+🧪 Testing backend socket communication...
+✅ Socket connection successful
+✅ STATUS command works: AI_LOADING
+✅ Command execution works
+✅ Backend sanity test passed
+✅ Deployment test passed
+
+📝 Step 6: Git Commit & Push
+📝 Git: Adding changes...
+📝 Git: Committing changes...
+📝 Git: Pushing to remote...
+✅ Changes committed and pushed successfully
+
+🎉 Deployment pipeline completed successfully!
+```
+
+### Development Workflow
+
+For awesh development, use the Deployment MCP to ensure consistent builds and deployments:
+
+```bash
+# During development - quick test
+python3 deployment_mcp.py build && python3 deployment_mcp.py deploy
+
+# Before committing - full validation  
+python3 deployment_mcp.py full_deploy
+
+# Debugging backend issues
+python3 deployment_mcp.py kill_force && python3 deployment_mcp.py test
+```
+
+The Deployment MCP ensures reliable, repeatable deployments and catches issues early in the development cycle.
+
 ## 🔮 AIOps Vision & Roadmap
 
 ### Core Philosophy

@@ -73,6 +73,14 @@ void load_config() {
     fclose(file);
 }
 
+void handle_sigint(int sig __attribute__((unused))) {
+    // Ctrl+C should just return to prompt, not exit
+    printf("\n");
+    rl_on_new_line();
+    rl_replace_line("", 0);
+    rl_redisplay();
+}
+
 void cleanup_and_exit(int sig __attribute__((unused))) {
     if (state.socket_fd >= 0) {
         close(state.socket_fd);
@@ -233,8 +241,8 @@ void handle_builtin(const char* cmd) {
 
 int main() {
     // Setup signal handlers
-    signal(SIGINT, cleanup_and_exit);
-    signal(SIGTERM, cleanup_and_exit);
+    signal(SIGINT, handle_sigint);     // Ctrl+C returns to prompt
+    signal(SIGTERM, cleanup_and_exit); // SIGTERM exits cleanly
     
     // Load configuration
     load_config();

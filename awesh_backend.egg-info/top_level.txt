@@ -1,6 +1,7 @@
 awesh
 awesh_backend
 credential_store
+deployment
 executor
 interaction
 nlp
