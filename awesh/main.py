@@ -58,7 +58,7 @@ def create_parser():
     return parser
 
 
-async def main():
+def main():
     """Main entry point for awesh"""
     parser = create_parser()
     args = parser.parse_args()
@@ -79,9 +79,11 @@ async def main():
         # Initialize and run the shell
         shell = AweshShell(config)
         try:
-            await shell.run()
+            shell.run()
         finally:
-            await shell.cleanup()
+            # Cleanup if needed
+            if hasattr(shell, 'cleanup'):
+                asyncio.run(shell.cleanup())
         
     except KeyboardInterrupt:
         print("\nGoodbye!")
@@ -93,7 +95,7 @@ async def main():
 
 def cli_main():
     """Entry point for setuptools console script"""
-    asyncio.run(main())
+    main()
 
 
 if __name__ == '__main__':

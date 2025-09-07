@@ -5,9 +5,9 @@ Main shell implementation for awesh
 import os
 import sys
 import asyncio
+import threading
 from pathlib import Path
 from typing import Optional
-import concurrent.futures
 
 try:
     from .config import Config
@@ -36,8 +36,8 @@ class AweshShell:
         self.ai_ready = False
         self.ai_init_message_shown = False
         
-    async def run(self):
-        """Main shell loop"""
+    def run(self):
+        """Main shell loop - now synchronous with threading"""
         # Show MOTD immediately
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Model: {self.config.model}")
@@ -45,13 +45,15 @@ class AweshShell:
         print(f"\nType 'exit' to quit, or use Ctrl+C")
         print()
         
-        # Start AI initialization in background (fire and forget)
-        asyncio.create_task(self._initialize_ai_background())
+        # Start AI initialization in separate thread
+        ai_thread = threading.Thread(target=self._initialize_ai_thread, daemon=True)
+        ai_thread.start()
         
+        # Main prompt loop (immediate)
         while self.running:
             try:
-                # Get user input asynchronously (non-blocking)
-                line = await self._async_input(self.config.prompt_label)
+                # Get user input (immediate, no blocking)
+                line = input(self.config.prompt_label)
                 
                 if not line.strip():
                     continue
@@ -61,12 +63,12 @@ class AweshShell:
                 
                 if destination == 'bash':
                     if self.router.is_builtin_command(cleaned_line):
-                        await self._handle_builtin(cleaned_line)
+                        self._handle_builtin(cleaned_line)
                     else:
-                        await self._handle_bash_command(cleaned_line)
+                        self._handle_bash_command(cleaned_line)
                     self.last_command = cleaned_line
                 else:  # destination == 'ai'
-                    await self._handle_ai_prompt(cleaned_line)
+                    self._handle_ai_prompt(cleaned_line)
                     
             except KeyboardInterrupt:
                 print()  # New line after ^C
@@ -75,7 +77,7 @@ class AweshShell:
                 print("\nGoodbye!")
                 break
                 
-    async def _handle_builtin(self, command: str):
+    def _handle_builtin(self, command: str):
         """Handle awesh builtin commands"""
         tokens = command.strip().split()
         cmd = tokens[0]
@@ -104,9 +106,9 @@ class AweshShell:
                 except PermissionError:
                     print(f"awesh: cd: {new_dir}: Permission denied", file=sys.stderr)
                 
-    async def _handle_bash_command(self, command: str):
+    def _handle_bash_command(self, command: str):
         """Handle bash command execution"""
-        exit_code, stdout, stderr = await self.bash_executor.execute(command)
+        exit_code, stdout, stderr = asyncio.run(self.bash_executor.execute(command))
         
         if stdout:
             print(stdout, end='')
@@ -116,7 +118,7 @@ class AweshShell:
         # Store exit code for potential use (like $? in bash)
         self.last_exit_code = exit_code
         
-    async def _handle_ai_prompt(self, prompt: str):
+    def _handle_ai_prompt(self, prompt: str):
         """Handle AI prompt processing"""
         if not self.ai_ready:
             print("🔄 AI client still initializing... Please wait a moment and try again.")
@@ -136,31 +138,28 @@ class AweshShell:
             if self.last_command:
                 context['last_command'] = self.last_command
             
-            # Process prompt and stream response
+            # Process prompt and stream response (run in new event loop)
             print("🤖 ", end="", flush=True)
             
-            response_chunks = []
-            async for chunk in self.ai_client.process_prompt(prompt, context):
-                print(chunk, end="", flush=True)
-                response_chunks.append(chunk)
+            async def process_ai():
+                response_chunks = []
+                async for chunk in self.ai_client.process_prompt(prompt, context):
+                    print(chunk, end="", flush=True)
+                    response_chunks.append(chunk)
+                print()  # New line after response
             
-            print()  # New line after response
+            asyncio.run(process_ai())
             
         except KeyboardInterrupt:
             print("\n⏹️  AI response interrupted")
         except Exception as e:
             print(f"\n❌ Error processing AI prompt: {e}")
             
-    async def _async_input(self, prompt: str) -> str:
-        """Get user input asynchronously without blocking the event loop"""
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            return await loop.run_in_executor(executor, input, prompt)
-    
-    async def _initialize_ai_background(self):
-        """Initialize AI client in background"""
+    def _initialize_ai_thread(self):
+        """Initialize AI client in background thread"""
         try:
-            await self.ai_client.initialize()
+            # Run async initialization in this thread
+            asyncio.run(self.ai_client.initialize())
             self.ai_ready = True
             # Update the loading line
             print("\r✅ AI client ready and loaded successfully!        ")
