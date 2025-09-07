@@ -109,7 +109,7 @@ class AweshSocketBackend:
             debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
-    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None, client_socket=None) -> str:
+    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
         """Handle AI prompt and return response"""
         if not self.ai_ready:
             # AI not ready - if this was a bash failure, show the bash output
@@ -162,9 +162,15 @@ This allows the system to execute them automatically."""
                 debug_log("Calling collect_response with timeout")
                 response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
-                output += response
-                output += "\n"
-                return output
+                
+                # Check if AI provided awesh: commands to execute
+                if "awesh:" in response:
+                    debug_log("Found awesh: commands in AI response")
+                    return await self._extract_and_execute_commands(response)
+                else:
+                    output += response
+                    output += "\n"
+                    return output
             except asyncio.TimeoutError:
                 return f"❌ AI response timeout - request took too long\n"
             except Exception as stream_error:
@@ -173,6 +179,39 @@ This allows the system to execute them automatically."""
                 
         except Exception as e:
             return f"❌ AI error: {e}\n"
+    
+    async def _extract_and_execute_commands(self, ai_response: str) -> str:
+        """Extract awesh: commands from AI response and execute them"""
+        import re
+        
+        debug_log("Extracting awesh: commands from AI response")
+        
+        # Find all awesh: command patterns
+        awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
+        
+        if not awesh_commands:
+            debug_log("No awesh: commands found")
+            return f"🤖 {ai_response}\n"
+        
+        debug_log(f"Found {len(awesh_commands)} awesh: commands")
+        output = ""
+        
+        for i, command in enumerate(awesh_commands):
+            command = command.strip()
+            debug_log(f"Executing awesh command {i+1}: {command}")
+            
+            # Execute the command using bash executor
+            if self.bash_executor:
+                exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                
+                if stdout:
+                    output += stdout
+                if stderr:
+                    output += stderr
+                
+                debug_log(f"Command {i+1} result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars")
+        
+        return output if output else "No output from commands\n"
     
     async def handle_client(self, client_socket):
         """Handle client connection"""
