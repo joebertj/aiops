@@ -293,10 +293,13 @@ void send_command(const char* cmd) {
 }
 
 int is_awesh_command(const char* cmd) {
-    return (strcmp(cmd, "verbose") == 0 ||
-            strcmp(cmd, "verbose on") == 0 ||
-            strcmp(cmd, "verbose off") == 0 ||
-            strcmp(cmd, "verbose status") == 0);
+    return (strcmp(cmd, "aweh") == 0 ||
+            strcmp(cmd, "awev") == 0 ||
+            strcmp(cmd, "awev on") == 0 ||
+            strcmp(cmd, "awev off") == 0 ||
+            strcmp(cmd, "awev status") == 0 ||
+            strcmp(cmd, "awea openai") == 0 ||
+            strcmp(cmd, "awea openrouter") == 0);
 }
 
 int is_builtin(const char* cmd) {
@@ -306,14 +309,32 @@ int is_builtin(const char* cmd) {
 }
 
 void handle_awesh_command(const char* cmd) {
-    if (strcmp(cmd, "verbose") == 0 || strcmp(cmd, "verbose on") == 0) {
+    if (strcmp(cmd, "aweh") == 0) {
+        printf("🎛️  Awesh Control Commands:\n");
+        printf("\n📋 Help:\n");
+        printf("  aweh              Show this help\n");
+        printf("\n🔧 Verbose Debug:\n");
+        printf("  awev [on]         Enable debug logging\n");
+        printf("  awev off          Disable debug logging\n");
+        printf("  awev status       Show verbose state\n");
+        printf("\n🤖 AI Provider:\n");
+        printf("  awea openai       Switch to OpenAI\n");
+        printf("  awea openrouter   Switch to OpenRouter\n");
+        printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
+    } else if (strcmp(cmd, "awev") == 0 || strcmp(cmd, "awev on") == 0) {
         update_config_file("VERBOSE", "1");
         send_command("VERBOSE:1");
-    } else if (strcmp(cmd, "verbose off") == 0) {
+    } else if (strcmp(cmd, "awev off") == 0) {
         update_config_file("VERBOSE", "0");
         send_command("VERBOSE:0");
-    } else if (strcmp(cmd, "verbose status") == 0) {
+    } else if (strcmp(cmd, "awev status") == 0) {
         send_command("VERBOSE:");
+    } else if (strcmp(cmd, "awea openai") == 0) {
+        update_config_file("AI_PROVIDER", "openai");
+        send_command("AI_PROVIDER:openai");
+    } else if (strcmp(cmd, "awea openrouter") == 0) {
+        update_config_file("AI_PROVIDER", "openrouter");
+        send_command("AI_PROVIDER:openrouter");
     }
 }
 

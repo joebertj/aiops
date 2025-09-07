@@ -253,6 +253,16 @@ This allows the system to execute them automatically."""
                         else:
                             response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}\n"
                         debug_log(f"VERBOSE command: {verbose_setting} -> {VERBOSE}")
+                    elif command.startswith("AI_PROVIDER:"):
+                        # Switch AI provider dynamically
+                        provider = command.split(":", 1)[1].strip()
+                        if provider in ["openai", "openrouter"]:
+                            # Update config and reinitialize AI client
+                            self.config.ai_provider = provider
+                            response = f"🤖 Switching to {provider}... (restart awesh to take effect)\n"
+                        else:
+                            response = f"❌ Unknown AI provider: {provider}\n"
+                        debug_log(f"AI_PROVIDER command: {provider}")
                     else:
                         # Process regular command
                         debug_log(f"Processing command: {command}")

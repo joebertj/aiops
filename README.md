@@ -95,14 +95,46 @@ awesh
 
 **🔧 Configuration (`~/.aweshrc`):**
 ```bash
-# OpenAI Configuration
-OPENAI_MODEL=gpt-5
-OPENAI_API_KEY=your_api_key_here
+# AI Provider Configuration
+AI_PROVIDER=openai                    # openai or openrouter
+OPENAI_MODEL=gpt-5                   # Model to use
+OPENAI_API_KEY=sk-proj-abc123...xyz  # Your OpenAI API key (truncated)
+
+# OpenRouter Configuration (if using openrouter)
+OPENROUTER_API_KEY=sk-or-v1-abc...xyz # Your OpenRouter API key (truncated)
+OPENROUTER_MODEL=anthropic/claude-3-sonnet
 
 # Display Options  
 SHOW_AI_STATUS=true    # Show AI status in prompt (default: true)
 VERBOSE=0              # Debug logging: 0=silent, 1=verbose (default: 0)
 ```
+
+**Example `~/.aweshrc`:**
+```bash
+AI_PROVIDER=openai
+OPENAI_MODEL=gpt-5
+OPENAI_API_KEY=sk-proj-JrUoBu9D4iCb...T3BlbkFJMEjXf8l0w9SPKE-Rw
+SHOW_AI_STATUS=true
+VERBOSE=0
+```
+
+**🎛️ Control Commands:**
+```bash
+# Help (awe help)
+aweh            # Show all available awesh control commands
+
+# Verbose Debug Toggle (awe verbose)
+awev on         # Enable debug logging
+awev off        # Disable debug logging  
+awev status     # Show current verbose state
+awev            # Same as 'awev on'
+
+# AI Provider Switching (awe ai)
+awea openai     # Switch to OpenAI (GPT models)
+awea openrouter # Switch to OpenRouter (multiple providers)
+```
+
+*Control commands use the `awe` prefix to avoid conflicts with bash builtins and create a clean namespace for awesh operations.*
 
 [📖 Learn more about awesh →](./awesh/)
 
