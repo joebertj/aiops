@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""
+Socket-based backend for awesh C frontend
+"""
+
+import os
+import sys
+import socket
+import asyncio
+import threading
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from config import Config
+from ai_client import AweshAIClient
+from bash_executor import BashExecutor
+
+SOCKET_PATH = "/tmp/awesh.sock"
+
+class AweshSocketBackend:
+    """Socket-based backend for C frontend"""
+    
+    def __init__(self):
+        self.config = Config.load(Path.home() / '.aweshrc')
+        self.ai_client = None
+        self.bash_executor = None
+        self.ai_ready = False
+        self.socket = None
+        
+    async def initialize(self):
+        """Initialize AI components"""
+        try:
+            print("Backend: Initializing AI client...", file=sys.stderr)
+            self.ai_client = AweshAIClient(self.config)
+            await self.ai_client.initialize()
+            self.ai_ready = True
+            print("Backend: AI client ready!", file=sys.stderr)
+            
+            self.bash_executor = BashExecutor(".")
+            
+        except Exception as e:
+            print(f"Backend: AI init failed: {e}", file=sys.stderr)
+    
+    def _is_interactive_command(self, command: str) -> bool:
+        """Check if command needs interactive terminal"""
+        interactive_commands = {
+            'vi', 'vim', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
+            'man', 'ssh', 'ftp', 'telnet', 'mysql', 'psql', 'python', 
+            'python3', 'node', 'irb', 'bash', 'sh', 'zsh'
+        }
+        first_word = command.strip().split()[0] if command.strip() else ""
+        return first_word in interactive_commands
+    
+    async def process_command(self, command: str) -> str:
+        """Process command and return response"""
+        try:
+            # Interactive commands - tell frontend to handle directly
+            if self._is_interactive_command(command):
+                return f"INTERACTIVE:{command}\n"
+            
+            # Try bash first
+            if self.bash_executor:
+                exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                
+                # Clean success - return output directly
+                if exit_code == 0 and stdout and not stderr:
+                    return stdout
+                
+                # Command failed - let AI handle if ready
+                if self.ai_ready:
+                    bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                    return await self._handle_ai_prompt(command, bash_result)
+                else:
+                    # AI not ready - return bash output with hint
+                    result = ""
+                    if stdout:
+                        result += stdout
+                    if stderr:
+                        result += stderr + "💡 AI not ready yet - this might be a natural language query\n"
+                    return result
+            else:
+                # No bash executor - AI handles everything
+                return await self._handle_ai_prompt(command)
+                
+        except Exception as e:
+            return f"Backend error: {e}\n"
+    
+    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
+        """Handle AI prompt and return response"""
+        if not self.ai_ready:
+            return "🔄 AI still loading...\n"
+        
+        try:
+            # Give AI full context
+            if bash_result:
+                ai_input = f"""User command: {prompt}
+Bash result:
+- Exit code: {bash_result.get('exit_code', 0)}
+- Stdout: {bash_result.get('stdout', '')}
+- Stderr: {bash_result.get('stderr', '')}
+
+Process this and respond appropriately."""
+            else:
+                ai_input = prompt
+            
+            output = "🤖 "
+            async for chunk in self.ai_client.process_prompt(ai_input):
+                output += chunk
+            output += "\n"
+            
+            return output
+        except Exception as e:
+            return f"❌ AI error: {e}\n"
+    
+    async def handle_client(self, client_socket):
+        """Handle client connection"""
+        try:
+            while True:
+                # Receive command
+                data = client_socket.recv(4096).decode('utf-8')
+                if not data:
+                    break
+                
+                command = data.strip()
+                if not command:
+                    continue
+                
+                # Process command
+                response = await self.process_command(command)
+                
+                # Send response
+                client_socket.send(response.encode('utf-8'))
+                
+        except Exception as e:
+            print(f"Client handler error: {e}", file=sys.stderr)
+        finally:
+            client_socket.close()
+    
+    async def run_server(self):
+        """Run socket server"""
+        # Remove existing socket
+        try:
+            os.unlink(SOCKET_PATH)
+        except OSError:
+            pass
+        
+        # Create socket
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.bind(SOCKET_PATH)
+        self.socket.listen(1)
+        
+        print(f"Backend: Listening on {SOCKET_PATH}", file=sys.stderr)
+        
+        # Start AI initialization in background
+        asyncio.create_task(self.initialize())
+        
+        # Accept connections
+        while True:
+            try:
+                client_socket, _ = self.socket.accept()
+                print("Backend: Client connected", file=sys.stderr)
+                
+                # Handle client in background
+                asyncio.create_task(self.handle_client(client_socket))
+                
+            except Exception as e:
+                print(f"Server error: {e}", file=sys.stderr)
+                break
+    
+    def cleanup(self):
+        """Cleanup resources"""
+        if self.socket:
+            self.socket.close()
+        try:
+            os.unlink(SOCKET_PATH)
+        except OSError:
+            pass
+
+async def main():
+    backend = AweshSocketBackend()
+    
+    try:
+        await backend.run_server()
+    except KeyboardInterrupt:
+        print("Backend: Shutting down...", file=sys.stderr)
+    finally:
+        backend.cleanup()
+
+if __name__ == "__main__":
+    asyncio.run(main())
