@@ -77,18 +77,20 @@ class AweshSocketBackend:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 debug_log(f"process_command: Bash result - exit: {exit_code}, stdout: {len(stdout) if stdout else 0} chars")
                 
-                # Clean success - return output directly (bypass AI)
-                if exit_code == 0 and stdout and not stderr:
-                    debug_log("process_command: Clean success, returning bash output")
-                    return stdout
-                
-                # Success but no output (like cd) - return empty
-                if exit_code == 0 and not stdout and not stderr:
-                    debug_log("process_command: Empty success, returning empty")
-                    return ""
+                # Success cases - return bash output directly (bypass AI)
+                if exit_code == 0:
+                    if stdout and not stderr:
+                        debug_log("process_command: Clean success, returning bash output")
+                        return stdout
+                    elif stdout:  # Has output but also has stderr - still successful
+                        debug_log("process_command: Success with warnings, returning bash output")
+                        return stdout + (stderr if stderr else "")
+                    elif not stderr:  # No output, no errors (like cd)
+                        debug_log("process_command: Empty success, returning empty")
+                        return ""
                 
                 # Command failed - let AI handle if ready, otherwise show bash output
-                debug_log(f"process_command: Command needs AI processing, ai_ready: {self.ai_ready}")
+                debug_log(f"process_command: Command failed (exit={exit_code}), ai_ready: {self.ai_ready}")
                 if self.ai_ready:
                     bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                     debug_log("process_command: Sending to AI")
