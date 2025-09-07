@@ -99,7 +99,16 @@ class AweshSocketBackend:
         try:
             debug_log(f"process_command: Starting with command: {command}")
             
-            # Check for cd command first
+            # Check for working directory sync from frontend
+            if command.startswith('SYNC_CWD:'):
+                new_dir = command[9:]  # Remove 'SYNC_CWD:' prefix
+                debug_log(f"Syncing working directory to: {new_dir}")
+                self.current_dir = new_dir
+                if self.bash_executor:
+                    self.bash_executor.set_cwd(self.current_dir)
+                return ""  # No output for sync command
+            
+            # Check for cd command first (fallback - should be handled by frontend)
             if command.strip().startswith('cd ') or command.strip() == 'cd':
                 debug_log(f"Detected cd command: '{command.strip()}'")
                 return self._handle_cd_command(command.strip())

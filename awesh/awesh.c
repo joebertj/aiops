@@ -303,7 +303,9 @@ int is_awesh_command(const char* cmd) {
 }
 
 int is_builtin(const char* cmd) {
-    return (strcmp(cmd, "pwd") == 0 || 
+    return (strncmp(cmd, "cd ", 3) == 0 || 
+            strcmp(cmd, "cd") == 0 ||
+            strcmp(cmd, "pwd") == 0 || 
             strcmp(cmd, "exit") == 0);
 }
 
@@ -410,6 +412,26 @@ void handle_builtin(const char* cmd) {
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd))) {
             printf("%s\n", cwd);
+        }
+    } else if (strncmp(cmd, "cd ", 3) == 0 || strcmp(cmd, "cd") == 0) {
+        // Handle cd command in frontend and sync with backend
+        const char* path;
+        if (strcmp(cmd, "cd") == 0) {
+            path = getenv("HOME");  // cd with no args goes to home
+        } else {
+            path = cmd + 3;  // cd with path
+        }
+        
+        if (chdir(path) == 0) {
+            // Success - send working directory update to backend
+            char cwd[1024];
+            if (getcwd(cwd, sizeof(cwd))) {
+                char sync_cmd[1100];
+                snprintf(sync_cmd, sizeof(sync_cmd), "SYNC_CWD:%s", cwd);
+                send_command(sync_cmd);
+            }
+        } else {
+            perror("cd");
         }
     }
 }
