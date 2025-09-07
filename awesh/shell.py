@@ -37,19 +37,15 @@ class AweshShell:
         
     async def run(self):
         """Main shell loop"""
+        # Show MOTD immediately
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Model: {self.config.model}")
-        print()
-        
-        # Show that AI is loading but don't block
         print("🔄 AI client initializing in background...")
         print(f"Type 'exit' to quit, or use Ctrl+C")
         print()
         
-        # Start AI initialization in background
-        ai_init_task = asyncio.create_task(self._initialize_ai_background())
-        
-        # Start main loop immediately
+        # Start AI initialization in background (fire and forget)
+        asyncio.create_task(self._initialize_ai_background())
         
         while self.running:
             try:
@@ -159,11 +155,10 @@ class AweshShell:
         try:
             await self.ai_client.initialize()
             self.ai_ready = True
-            if not self.ai_init_message_shown:
-                print("\r✅ AI client ready!                    ")
-                self.ai_init_message_shown = True
+            # Show ready message (will appear above next prompt)
+            print("✅ AI client ready!")
         except Exception as e:
-            print(f"\r⚠️  AI initialization failed: {e}")
+            print(f"⚠️  AI initialization failed: {e}")
             print("   AI features will be disabled. Check your OPENAI_API_KEY in ~/.aweshrc")
             
     async def cleanup(self):
