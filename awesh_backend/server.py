@@ -284,10 +284,10 @@ awesh: <command>"""
         return False
     
     async def _handle_ai_questions(self, ai_response: str) -> str:
-        """Handle AI questions/options by presenting them to user for selection"""
+        """Handle AI questions/options by automatically trying each option until we get a clean result"""
         import re
         
-        debug_log("Processing AI questions/options")
+        debug_log("Processing AI questions/options automatically")
         
         # Extract numbered or lettered options
         options = []
@@ -295,30 +295,147 @@ awesh: <command>"""
         # Look for numbered options (1. 2. 3.)
         numbered_options = re.findall(r'(\d+\.\s*[^\n]+)', ai_response)
         if numbered_options:
-            options.extend(numbered_options)
+            # Clean up the options (remove numbers/bullets)
+            cleaned_options = [re.sub(r'^\d+\.\s*', '', opt).strip() for opt in numbered_options]
+            options.extend(cleaned_options)
             debug_log(f"Found {len(numbered_options)} numbered options")
         
         # Look for lettered options (a) b) c))
         lettered_options = re.findall(r'([a-zA-Z]\)\s*[^\n]+)', ai_response)
         if lettered_options:
-            options.extend(lettered_options)
+            # Clean up the options (remove letters/bullets)
+            cleaned_options = [re.sub(r'^[a-zA-Z]\)\s*', '', opt).strip() for opt in lettered_options]
+            options.extend(cleaned_options)
             debug_log(f"Found {len(lettered_options)} lettered options")
         
         if options:
-            debug_log(f"Found {len(options)} total options, presenting to user")
-            
-            # Format options for user selection
-            formatted_response = f"🤖 {ai_response}\n\n"
-            formatted_response += "💡 Please type the number or letter of your choice, or describe what you want:\n"
-            
-            for i, option in enumerate(options, 1):
-                formatted_response += f"   {option}\n"
-            
-            return formatted_response
+            debug_log(f"Found {len(options)} total options, trying them automatically")
+            return await self._try_options_stack(options)
         else:
             # No clear options found, but response seems to be a question
-            debug_log("No clear options found, returning question as-is")
-            return f"🤖 {ai_response}\n\n💡 Please provide more details or clarify your request.\n"
+            # Try to extract any meaningful phrases to attempt
+            debug_log("No clear options found, extracting potential interpretations")
+            return await self._extract_and_try_interpretations(ai_response)
+    
+    async def _try_options_stack(self, options: list) -> str:
+        """Try each option in the stack until we get a clean result"""
+        debug_log(f"🔄 Starting option stack with {len(options)} options:")
+        for i, opt in enumerate(options, 1):
+            debug_log(f"   Option {i}: {opt}")
+        
+        # Create stack of options (reverse order so we pop from first to last)
+        option_stack = [opt.strip() for opt in reversed(options)]
+        failed_options = []
+        option_number = 1
+        
+        while option_stack:
+            option = option_stack.pop()
+            debug_log(f"🎯 TRYING OPTION {option_number}/{len(options)}: {option}")
+            
+            try:
+                # Send the option back to AI to get commands
+                option_prompt = f"Please provide awesh: commands for: {option}"
+                debug_log(f"🤖 Asking AI for commands for option {option_number}")
+                option_response = await self._handle_ai_prompt(option_prompt)
+                
+                # Check if AI provided awesh: commands
+                if "awesh:" in option_response:
+                    debug_log(f"✅ Option {option_number} provided commands, trying them now")
+                    result = await self._extract_and_execute_commands_with_option_context(option_response, option, option_number)
+                    
+                    # Check if we got a clean result (no error indicators)
+                    if not ("❌" in result or "All commands failed" in result):
+                        debug_log(f"🎉 SUCCESS! Option {option_number} '{option}' worked perfectly!")
+                        return result
+                    else:
+                        debug_log(f"❌ Option {option_number} '{option}' commands all failed")
+                        failed_options.append(option)
+                else:
+                    debug_log(f"❌ Option {option_number} '{option}' didn't provide any commands")
+                    failed_options.append(option)
+                    
+            except Exception as e:
+                debug_log(f"❌ Error trying option {option_number} '{option}': {e}")
+                failed_options.append(option)
+            
+            option_number += 1
+        
+        # All options failed
+        debug_log(f"💥 All {len(failed_options)} options exhausted, none worked")
+        failed_list = "\n".join([f"- {opt}" for opt in failed_options])
+        return f"❌ All options failed:\n{failed_list}\n"
+    
+    async def _extract_and_execute_commands_with_option_context(self, ai_response: str, option: str, option_number: int) -> str:
+        """Extract awesh: commands from AI response and execute them with enhanced debug logging for option context"""
+        import re
+        
+        debug_log(f"🔍 Extracting commands from option {option_number} response")
+        
+        # Find all awesh: command patterns
+        awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
+        
+        if not awesh_commands:
+            debug_log(f"❌ No awesh: commands found in option {option_number} response")
+            return f"No awesh: commands found for option: {option}\n"
+        
+        debug_log(f"📋 Found {len(awesh_commands)} commands for option {option_number} '{option}':")
+        for i, cmd in enumerate(awesh_commands, 1):
+            debug_log(f"   Command {i}: {cmd.strip()}")
+        
+        # Create stack of commands (reverse order so we pop from first to last)
+        command_stack = [cmd.strip() for cmd in reversed(awesh_commands)]
+        failed_commands = []
+        command_number = 1
+        
+        # Try commands one by one until we find one that works
+        while command_stack:
+            command = command_stack.pop()
+            debug_log(f"⚡ TRYING COMMAND {command_number}/{len(awesh_commands)} for option {option_number}: {command}")
+            
+            # Execute the command using bash executor
+            if self.bash_executor:
+                exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                
+                debug_log(f"📊 Command {command_number} result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
+                
+                # Check if command succeeded (exit_code=0 and no stderr)
+                if exit_code == 0 and not stderr:
+                    debug_log(f"🎉 JACKPOT! Command {command_number} in option {option_number} succeeded: {command}")
+                    debug_log(f"✨ First try success - option {option_number}, command {command_number} worked perfectly!")
+                    return stdout if stdout else "Command executed successfully (no output)\n"
+                else:
+                    # Command failed, add to failed list and try next
+                    debug_log(f"❌ Command {command_number} failed: {command} (exit={exit_code})")
+                    if stderr:
+                        debug_log(f"   stderr: {stderr[:100]}...")  # Show first 100 chars of stderr
+                    failed_commands.append(command)
+            
+            command_number += 1
+        
+        # All commands for this option failed
+        debug_log(f"💥 All {len(failed_commands)} commands failed for option {option_number} '{option}'")
+        return await self._request_command_alternatives(failed_commands)
+    
+    async def _extract_and_try_interpretations(self, ai_response: str) -> str:
+        """Extract potential interpretations from unclear AI response and try them"""
+        debug_log("Extracting interpretations from unclear response")
+        
+        # Try to send the response back to AI for clarification
+        clarify_prompt = f"The previous response was: {ai_response}\n\nPlease provide specific awesh: commands to help with this request."
+        
+        try:
+            clarify_response = await self._handle_ai_prompt(clarify_prompt)
+            
+            if "awesh:" in clarify_response:
+                debug_log("Got commands from clarification, trying them")
+                return await self._extract_and_execute_commands(clarify_response)
+            else:
+                debug_log("No commands from clarification")
+                return f"🤖 {ai_response}\n\n❌ Could not determine specific actions to take.\n"
+                
+        except Exception as e:
+            debug_log(f"Error getting clarification: {e}")
+            return f"🤖 {ai_response}\n\n❌ Could not process request: {e}\n"
     
     async def handle_client(self, client_socket):
         """Handle client connection"""
