@@ -165,6 +165,16 @@ This allows the system to execute them automatically."""
                 response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
                 
+                # Handle empty response
+                if not response or len(response.strip()) == 0:
+                    debug_log("❌ Empty AI response received!")
+                    debug_log(f"Raw response: '{response}'")
+                    debug_log("This might indicate an AI client issue or API problem")
+                    return "❌ AI returned empty response - please try again or check AI configuration\n"
+                
+                # Show first part of response for debugging
+                debug_log(f"AI response preview: '{response[:100]}{'...' if len(response) > 100 else ''}'")
+                
                 # Check response type and handle accordingly
                 if "awesh:" in response:
                     debug_log("Found awesh: commands in AI response")
