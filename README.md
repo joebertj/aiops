@@ -384,9 +384,9 @@ Comprehensive testing automation with AI-driven test selection, execution, and r
 - **Coverage Analysis**: Gap identification and test recommendation
 
 **⚠️ Development Status:**
-Development of this MCP server has been paused due to Cursor IDE limitations. The IDE's background AI prompts interfere with the strict rule adherence required for safety-critical testing scenarios. The Tester AI violates custom constraints we set, making it impossible to implement reliable test automation logic.
+Development of this MCP server has been paused due to Cursor's AI tool limitations. The tool's opinionated prompts interfere with the strict rule adherence required for safety-critical testing scenarios. Moving to vi + terminal for clean development without tool interference.
 
-*Will be implemented in external development environment and copied from `~/AI/kubernetes_web` test automation framework once completed.*
+*Will be implemented in vi-based development environment and copied from `~/AI/kubernetes_web` test automation framework once completed.*
 
 ---
 
@@ -413,28 +413,30 @@ The AIOps MCP framework provides:
 
 ## ⚠️ Development Constraints & Limitations
 
-### Cursor IDE Limitations
+### Cursor IDE Tool Limitations
 
-During development of the Test Suite MCP, we encountered significant limitations with Cursor IDE that prevented proper implementation:
+During development of the Test Suite MCP, we encountered limitations with Cursor's AI tools that prevented proper implementation:
 
-**🚫 Opinionated Background Prompts**
-- Cursor introduces its own AI prompts and rules in the background without user control
-- These background prompts conflict with our custom test suite logic and safety rules
-- The "Tester AI" violates the specific rules and constraints we set for our MCP servers
-- This makes it impossible to implement domain-specific AI behavior that contradicts Cursor's opinions
+**🚫 Opinionated Tool Prompts**
+- Cursor's AI tools introduce their own prompts and rules without user control
+- These tool-level prompts conflict with our custom test suite logic and safety rules
+- The AI assistant violates the specific rules and constraints we set for our MCP servers
+- This makes it impossible to implement domain-specific AI behavior that contradicts the tool's opinions
 
-**📋 Specific Symptoms:**
+**📋 Specific Issue:**
 - Our Test Suite MCP requires strict rule adherence for safety-critical testing scenarios
-- Cursor's background AI overrides our custom prompts and behavioral constraints
-- The AI assistant ignores project-specific rules in favor of Cursor's generic guidelines
-- Custom AI workflows get corrupted by Cursor's opinionated intervention
+- Cursor's tool prompts override our custom behavioral constraints
+- The AI ignores project-specific rules in favor of the tool's generic guidelines
 
-**🔧 Workaround:**
-- Test Suite MCP implementation moved to external development environment
-- MCP servers developed outside Cursor maintain proper rule compliance
-- Integration testing performed in clean environments without IDE interference
+**💡 Development Philosophy:**
+As vi users, we prefer simple, direct tools that don't impose their own opinions. IDEs are often overkill - vi is sufficient for most development tasks. Even modern alternatives like neovim introduce unnecessary complexity. The best tools get out of your way and let you work.
 
-This limitation highlights the importance of AI development tools that respect user-defined constraints rather than imposing their own opinionated behaviors on specialized AI applications.
+**🔧 Solution:**
+- Test Suite MCP development moved to vi + terminal environment
+- Clean development without IDE tool interference
+- Direct control over AI behavior and constraints
+
+This experience reinforces why simple, unopinionated tools are superior for specialized development work.
 
 ---
 
@@ -447,7 +449,7 @@ We welcome contributions that advance AI-powered operations:
 - **Safety Features**: Better guardrails and validation
 - **Documentation**: Help others adopt AIOps practices
 
-**Note:** When contributing MCP servers with custom AI behavior, consider developing in environments that don't impose background AI constraints that could interfere with your specific use cases.
+**Note:** When contributing MCP servers with custom AI behavior, consider using simple tools like vi + terminal that don't impose their own AI opinions on your specialized use cases.
 
 ## 📄 License
 
