@@ -90,7 +90,7 @@ class AweshSocketBackend:
                 debug_log(f"Changed directory to: {self.current_dir}")
                 return ""  # cd successful, no output
             else:
-                return f"cd: {path}: No such file or directory\n"
+                return f"cd: {new_dir}: No such file or directory\n"
         except Exception as e:
             return f"cd: {e}\n"
     
@@ -101,6 +101,7 @@ class AweshSocketBackend:
             
             # Check for cd command first
             if command.strip().startswith('cd ') or command.strip() == 'cd':
+                debug_log(f"Detected cd command: '{command.strip()}'")
                 return self._handle_cd_command(command.strip())
             
             # Check for pwd command
