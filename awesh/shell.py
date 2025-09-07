@@ -32,27 +32,24 @@ class AweshShell:
         self.last_exit_code = 0
         self.ai_client = AweshAIClient(config)
         self.last_command = None
+        self.ai_ready = False
+        self.ai_init_message_shown = False
         
     async def run(self):
         """Main shell loop"""
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
-        print(f"Philosophy: 'AI by default, Bash when I mean Bash'")
         print(f"Model: {self.config.model}")
         print()
         
-        # Show loading message during initialization
-        print("🔄 Initializing AI client...", end="", flush=True)
-        
-        # Initialize AI client
-        try:
-            await self.ai_client.initialize()
-            print("\r✅ AI client initialized successfully")
-        except Exception as e:
-            print(f"\r⚠️  Warning: AI client initialization failed: {e}")
-            print("   AI features will be disabled. Check your OPENAI_API_KEY in ~/.aweshrc")
-        
+        # Show that AI is loading but don't block
+        print("🔄 AI client initializing in background...")
         print(f"Type 'exit' to quit, or use Ctrl+C")
         print()
+        
+        # Start AI initialization in background
+        ai_init_task = asyncio.create_task(self._initialize_ai_background())
+        
+        # Start main loop immediately
         
         while self.running:
             try:
@@ -124,6 +121,10 @@ class AweshShell:
         
     async def _handle_ai_prompt(self, prompt: str):
         """Handle AI prompt processing"""
+        if not self.ai_ready:
+            print("🔄 AI client still initializing... Please wait a moment and try again.")
+            return
+            
         if not self.ai_client.client:
             print("❌ AI client not available. Check your OPENAI_API_KEY configuration.")
             return
@@ -152,6 +153,18 @@ class AweshShell:
             print("\n⏹️  AI response interrupted")
         except Exception as e:
             print(f"\n❌ Error processing AI prompt: {e}")
+            
+    async def _initialize_ai_background(self):
+        """Initialize AI client in background"""
+        try:
+            await self.ai_client.initialize()
+            self.ai_ready = True
+            if not self.ai_init_message_shown:
+                print("\r✅ AI client ready!                    ")
+                self.ai_init_message_shown = True
+        except Exception as e:
+            print(f"\r⚠️  AI initialization failed: {e}")
+            print("   AI features will be disabled. Check your OPENAI_API_KEY in ~/.aweshrc")
             
     async def cleanup(self):
         """Clean up resources"""
