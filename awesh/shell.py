@@ -49,7 +49,9 @@ class AweshShell:
         # Simple shell loop like bash/python
         while self.running:
             try:
-                line = input(self.config.prompt_label)
+                # Show prompt immediately
+                print(self.config.prompt_label, end='', flush=True)
+                line = input()
                 
                 if not line.strip():
                     continue
