@@ -292,14 +292,29 @@ void send_command(const char* cmd) {
     }
 }
 
-int is_builtin(const char* cmd) {
-    return (strncmp(cmd, "cd ", 3) == 0 || 
-            strcmp(cmd, "pwd") == 0 || 
-            strcmp(cmd, "exit") == 0 ||
-            strcmp(cmd, "verbose") == 0 ||
+int is_awesh_command(const char* cmd) {
+    return (strcmp(cmd, "verbose") == 0 ||
             strcmp(cmd, "verbose on") == 0 ||
             strcmp(cmd, "verbose off") == 0 ||
             strcmp(cmd, "verbose status") == 0);
+}
+
+int is_builtin(const char* cmd) {
+    return (strncmp(cmd, "cd ", 3) == 0 || 
+            strcmp(cmd, "pwd") == 0 || 
+            strcmp(cmd, "exit") == 0);
+}
+
+void handle_awesh_command(const char* cmd) {
+    if (strcmp(cmd, "verbose") == 0 || strcmp(cmd, "verbose on") == 0) {
+        update_config_file("VERBOSE", "1");
+        send_command("VERBOSE:1");
+    } else if (strcmp(cmd, "verbose off") == 0) {
+        update_config_file("VERBOSE", "0");
+        send_command("VERBOSE:0");
+    } else if (strcmp(cmd, "verbose status") == 0) {
+        send_command("VERBOSE:");
+    }
 }
 
 void handle_builtin(const char* cmd) {
@@ -315,17 +330,6 @@ void handle_builtin(const char* cmd) {
         if (chdir(path) != 0) {
             perror("cd");
         }
-    } else if (strcmp(cmd, "verbose") == 0 || strcmp(cmd, "verbose on") == 0) {
-        update_config_file("VERBOSE", "1");
-        send_command("VERBOSE:1");
-        return;
-    } else if (strcmp(cmd, "verbose off") == 0) {
-        update_config_file("VERBOSE", "0");
-        send_command("VERBOSE:0");
-        return;
-    } else if (strcmp(cmd, "verbose status") == 0) {
-        send_command("VERBOSE:");
-        return;
     }
 }
 
@@ -389,8 +393,10 @@ int main() {
         // Add to history
         add_history(line);
         
-        // Handle command
-        if (is_builtin(line)) {
+        // Handle command - priority order
+        if (is_awesh_command(line)) {
+            handle_awesh_command(line);
+        } else if (is_builtin(line)) {
             handle_builtin(line);
         } else {
             send_command(line);

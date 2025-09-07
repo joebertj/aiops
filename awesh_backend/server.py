@@ -246,12 +246,12 @@ This allows the system to execute them automatically."""
                         global VERBOSE
                         if verbose_setting in ["1", "true", "on"]:
                             VERBOSE = True
-                            response = "🔧 Verbose mode enabled"
+                            response = "🔧 Verbose mode enabled\n"
                         elif verbose_setting in ["0", "false", "off"]:
                             VERBOSE = False
-                            response = "🔇 Verbose mode disabled"
+                            response = "🔇 Verbose mode disabled\n"
                         else:
-                            response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}"
+                            response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}\n"
                         debug_log(f"VERBOSE command: {verbose_setting} -> {VERBOSE}")
                     else:
                         # Process regular command
