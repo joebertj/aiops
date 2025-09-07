@@ -165,12 +165,29 @@ This allows the system to execute them automatically."""
                 response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
                 
-                # Handle empty response
+                # Handle empty response with retry
                 if not response or len(response.strip()) == 0:
-                    debug_log("❌ Empty AI response received!")
+                    debug_log("❌ Empty AI response received! Retrying once...")
                     debug_log(f"Raw response: '{response}'")
-                    debug_log("This might indicate an AI client issue or API problem")
-                    return "❌ AI returned empty response - please try again or check AI configuration\n"
+                    
+                    # Wait a moment and retry
+                    await asyncio.sleep(1)
+                    debug_log("🔄 Retrying AI request...")
+                    
+                    try:
+                        retry_response = await asyncio.wait_for(collect_response(), timeout=300)
+                        debug_log(f"Retry response: {len(retry_response)} chars")
+                        
+                        if retry_response and len(retry_response.strip()) > 0:
+                            debug_log("✅ Retry succeeded!")
+                            response = retry_response
+                        else:
+                            debug_log("❌ Retry also returned empty response")
+                            debug_log(f"Retry raw response: '{retry_response}'")
+                            return "❌ AI returned empty response twice - please check AI configuration or try again later\n"
+                    except Exception as retry_error:
+                        debug_log(f"❌ Retry failed with error: {retry_error}")
+                        return f"❌ AI returned empty response and retry failed: {retry_error}\n"
                 
                 # Show first part of response for debugging
                 debug_log(f"AI response preview: '{response[:100]}{'...' if len(response) > 100 else ''}'")
