@@ -24,9 +24,42 @@ typedef struct {
     int backend_pid;
     int socket_fd;
     ai_status_t ai_status;
+    int show_ai_status;  // 1 = show, 0 = hide
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, AI_LOADING};
+static awesh_state_t state = {0, -1, AI_LOADING, 1};
+
+void load_config() {
+    // Read ~/.aweshrc for configuration
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", getenv("HOME"));
+    
+    FILE *file = fopen(config_path, "r");
+    if (!file) return;  // No config file, use defaults
+    
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        // Remove newline
+        line[strcspn(line, "\n")] = 0;
+        
+        // Skip empty lines and comments
+        if (line[0] == '\0' || line[0] == '#') continue;
+        
+        // Parse key=value pairs
+        char *equals = strchr(line, '=');
+        if (!equals) continue;
+        
+        *equals = '\0';
+        char *key = line;
+        char *value = equals + 1;
+        
+        if (strcmp(key, "SHOW_AI_STATUS") == 0) {
+            state.show_ai_status = (strcmp(value, "false") != 0 && strcmp(value, "0") != 0);
+        }
+    }
+    
+    fclose(file);
+}
 
 void cleanup_and_exit(int sig) {
     if (state.socket_fd >= 0) {
@@ -169,6 +202,9 @@ int main() {
     signal(SIGINT, cleanup_and_exit);
     signal(SIGTERM, cleanup_and_exit);
     
+    // Load configuration
+    load_config();
+    
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n\n");
     
@@ -181,17 +217,21 @@ int main() {
     char prompt[64];
     
     while (1) {
-        // Dynamic prompt with AI status
-        switch (state.ai_status) {
-            case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
-                break;
-            case AI_READY:
-                snprintf(prompt, sizeof(prompt), "AI ready: awesh> ");
-                break;
-            case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "awesh> ");
-                break;
+        // Dynamic prompt with optional AI status
+        if (state.show_ai_status) {
+            switch (state.ai_status) {
+                case AI_LOADING:
+                    snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
+                    break;
+                case AI_READY:
+                    snprintf(prompt, sizeof(prompt), "AI ready: awesh> ");
+                    break;
+                case AI_FAILED:
+                    snprintf(prompt, sizeof(prompt), "awesh> ");
+                    break;
+            }
+        } else {
+            snprintf(prompt, sizeof(prompt), "awesh> ");
         }
         
         // Get input with readline (supports history, editing)
