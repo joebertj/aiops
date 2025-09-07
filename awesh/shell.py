@@ -7,6 +7,7 @@ import sys
 import asyncio
 from pathlib import Path
 from typing import Optional
+import concurrent.futures
 
 try:
     from .config import Config
@@ -49,8 +50,8 @@ class AweshShell:
         
         while self.running:
             try:
-                # Get user input
-                line = input(self.config.prompt_label)
+                # Get user input asynchronously (non-blocking)
+                line = await self._async_input(self.config.prompt_label)
                 
                 if not line.strip():
                     continue
@@ -150,6 +151,12 @@ class AweshShell:
         except Exception as e:
             print(f"\n❌ Error processing AI prompt: {e}")
             
+    async def _async_input(self, prompt: str) -> str:
+        """Get user input asynchronously without blocking the event loop"""
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            return await loop.run_in_executor(executor, input, prompt)
+    
     async def _initialize_ai_background(self):
         """Initialize AI client in background"""
         try:
