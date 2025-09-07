@@ -24,7 +24,7 @@ class BashExecutor:
         interactive_commands = {
             'vi', 'vim', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
             'man', 'ssh', 'ftp', 'telnet', 'mysql', 'psql', 'python', 
-            'python3', 'node', 'irb', 'bash', 'sh', 'zsh'
+            'python3', 'node', 'irb', 'bash', 'sh', 'zsh', 'sudo'
         }
         first_word = command.strip().split()[0] if command.strip() else ""
         return first_word in interactive_commands
