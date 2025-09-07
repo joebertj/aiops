@@ -303,8 +303,7 @@ int is_awesh_command(const char* cmd) {
 }
 
 int is_builtin(const char* cmd) {
-    return (strncmp(cmd, "cd ", 3) == 0 || 
-            strcmp(cmd, "pwd") == 0 || 
+    return (strcmp(cmd, "pwd") == 0 || 
             strcmp(cmd, "exit") == 0);
 }
 
@@ -411,11 +410,6 @@ void handle_builtin(const char* cmd) {
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd))) {
             printf("%s\n", cwd);
-        }
-    } else if (strncmp(cmd, "cd ", 3) == 0) {
-        const char* path = cmd + 3;
-        if (chdir(path) != 0) {
-            perror("cd");
         }
     }
 }

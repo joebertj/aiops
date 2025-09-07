@@ -34,6 +34,7 @@ class AweshSocketBackend:
         self.bash_executor = None
         self.ai_ready = False
         self.socket = None
+        self.current_dir = os.getcwd()  # Track current working directory
         
     async def initialize(self):
         """Initialize AI components"""
@@ -46,7 +47,7 @@ class AweshSocketBackend:
             if VERBOSE:
                 print("✅ Backend: AI client ready!", file=sys.stderr)
             
-            self.bash_executor = BashExecutor(".")
+            self.bash_executor = BashExecutor(self.current_dir)
             
         except Exception as e:
             print(f"Backend: AI init failed: {e}", file=sys.stderr)
@@ -61,10 +62,50 @@ class AweshSocketBackend:
         first_word = command.strip().split()[0] if command.strip() else ""
         return first_word in interactive_commands
     
+    def _handle_cd_command(self, command: str) -> str:
+        """Handle cd command and update working directory"""
+        debug_log(f"Handling cd command: {command}")
+        
+        if command == 'cd':
+            # cd with no arguments goes to home directory
+            new_dir = os.path.expanduser("~")
+        else:
+            # cd with path argument
+            path = command[3:].strip()  # Remove 'cd ' prefix
+            if path.startswith('~'):
+                new_dir = os.path.expanduser(path)
+            elif os.path.isabs(path):
+                new_dir = path
+            else:
+                new_dir = os.path.join(self.current_dir, path)
+        
+        try:
+            # Resolve the path and check if it exists
+            new_dir = os.path.abspath(new_dir)
+            if os.path.isdir(new_dir):
+                self.current_dir = new_dir
+                # Update bash executor working directory
+                if self.bash_executor:
+                    self.bash_executor.set_cwd(self.current_dir)
+                debug_log(f"Changed directory to: {self.current_dir}")
+                return ""  # cd successful, no output
+            else:
+                return f"cd: {path}: No such file or directory\n"
+        except Exception as e:
+            return f"cd: {e}\n"
+    
     async def process_command(self, command: str) -> str:
         """Process command and return response"""
         try:
             debug_log(f"process_command: Starting with command: {command}")
+            
+            # Check for cd command first
+            if command.strip().startswith('cd ') or command.strip() == 'cd':
+                return self._handle_cd_command(command.strip())
+            
+            # Check for pwd command
+            if command.strip() == 'pwd':
+                return f"{self.current_dir}\n"
             
             # Interactive commands - tell frontend to handle directly
             if self._is_interactive_command(command):
