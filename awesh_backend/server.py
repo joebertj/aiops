@@ -135,12 +135,17 @@ class AweshSocketBackend:
                             response = "AI_READY"
                         else:
                             response = "AI_LOADING"
+                        print(f"Backend: STATUS response: {response}", file=sys.stderr)
                     else:
                         # Process regular command
+                        print(f"Backend: Processing command: {command}", file=sys.stderr)
                         response = await self.process_command(command)
-                    
+                        print(f"Backend: Response ready: {response[:50]}...", file=sys.stderr)
+
                     # Send response using asyncio
+                    print(f"Backend: Sending response...", file=sys.stderr)
                     await loop.sock_sendall(client_socket, response.encode('utf-8'))
+                    print(f"Backend: Response sent successfully", file=sys.stderr)
                     
                 except ConnectionResetError:
                     break
