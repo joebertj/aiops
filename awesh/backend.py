@@ -47,13 +47,17 @@ class AweshBackend:
             print(f"Backend init error: {e}", file=sys.stderr)
     
     async def process_command(self, command: str) -> dict:
-        """AI-first routing: all bash output goes to AI when ready"""
+        """Smart routing: bypass AI for clean successful commands"""
         try:
             # Try bash first
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 
-                # If AI is ready, send ALL output to AI (success or failure)
+                # Clean success (exit 0, has stdout, no stderr) - bypass AI
+                if exit_code == 0 and stdout and not stderr:
+                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                
+                # Everything else goes to AI if ready (failures, stderr, empty output)
                 if self.ai_ready:
                     bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                     return await self._handle_ai_prompt(command, bash_result)
