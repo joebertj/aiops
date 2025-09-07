@@ -1,0 +1,20 @@
+Metadata-Version: 2.1
+Name: awesh-backend
+Version: 0.1.0
+Summary: Python backend for awesh - AI-aware shell
+Home-page: UNKNOWN
+Author: awesh
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+License-File: LICENSE
+
+Socket-based backend server for awesh shell with AI capabilities
+

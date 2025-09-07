@@ -1,0 +1,8 @@
+awesh
+awesh_backend
+credential_store
+executor
+interaction
+nlp
+planner
+state_store

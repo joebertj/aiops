@@ -23,7 +23,7 @@ class AweshBackend:
     """Backend subprocess that handles AI and command routing"""
     
     def __init__(self):
-        self.config = Config.load()
+        self.config = Config.load(Path.home() / '.aweshrc')
         self.ai_client = None
         self.bash_executor = None
         self.ai_ready = False
@@ -53,12 +53,26 @@ class AweshBackend:
             sys.stdout.flush()
             print(f"Backend init error: {e}", file=sys.stderr)
     
+    def _is_interactive_command(self, command: str) -> bool:
+        """Check if command needs interactive terminal"""
+        interactive_commands = {
+            'vi', 'vim', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
+            'man', 'ssh', 'ftp', 'telnet', 'mysql', 'psql', 'python', 
+            'python3', 'node', 'irb', 'bash', 'sh', 'zsh'
+        }
+        first_word = command.strip().split()[0] if command.strip() else ""
+        return first_word in interactive_commands
+    
     async def process_command(self, command: str) -> dict:
         """Smart routing: bypass AI for clean successful commands"""
         try:
             # Try bash first
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                
+                # Interactive commands - always return directly (no AI processing)
+                if self._is_interactive_command(command):
+                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                 
                 # Clean success (exit 0, has stdout, no stderr) - bypass AI
                 if exit_code == 0 and stdout and not stderr:

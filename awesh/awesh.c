@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <signal.h>
 #include <errno.h>
 #include <readline/readline.h>
@@ -61,7 +63,7 @@ void load_config() {
     fclose(file);
 }
 
-void cleanup_and_exit(int sig) {
+void cleanup_and_exit(int sig __attribute__((unused))) {
     if (state.socket_fd >= 0) {
         close(state.socket_fd);
     }
@@ -81,8 +83,8 @@ int start_backend() {
     // Fork backend process
     state.backend_pid = fork();
     if (state.backend_pid == 0) {
-        // Child: start Python backend
-        execl("/usr/bin/python3", "python3", "backend_socket.py", NULL);
+        // Child: start Python backend as module
+        execl("/usr/bin/python3", "python3", "-m", "awesh_backend", NULL);
         perror("Failed to start backend");
         exit(1);
     } else if (state.backend_pid < 0) {
