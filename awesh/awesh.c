@@ -37,9 +37,10 @@ typedef struct {
     int socket_fd;
     ai_status_t ai_status;
     int show_ai_status;  // 1 = show, 0 = hide
+    int verbose;         // 1 = verbose debug, 0 = silent
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, AI_LOADING, 1};
+static awesh_state_t state = {0, -1, AI_LOADING, 1, 0};
 
 void load_config() {
     // Read ~/.aweshrc for configuration
@@ -67,6 +68,8 @@ void load_config() {
         
         if (strcmp(key, "SHOW_AI_STATUS") == 0) {
             state.show_ai_status = (strcmp(value, "false") != 0 && strcmp(value, "0") != 0);
+        } else if (strcmp(key, "VERBOSE") == 0) {
+            state.verbose = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
     
@@ -246,6 +249,13 @@ int main() {
     
     // Load configuration
     load_config();
+    
+    // Set VERBOSE environment variable for backend
+    if (state.verbose) {
+        setenv("VERBOSE", "1", 1);
+    } else {
+        setenv("VERBOSE", "0", 1);  // Explicitly set to 0 if not verbose
+    }
     
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n\n");

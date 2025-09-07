@@ -14,6 +14,14 @@ from .config import Config
 from .ai_client import AweshAIClient
 from .bash_executor import BashExecutor
 
+# Global verbose setting
+VERBOSE = os.getenv('VERBOSE', '0') == '1'
+
+def debug_log(message):
+    """Log debug message if verbose mode is enabled"""
+    if VERBOSE:
+        print(f"🔧 {message}", file=sys.stderr)
+
 import os
 SOCKET_PATH = os.path.expanduser("~/.awesh.sock")
 
@@ -54,28 +62,38 @@ class AweshSocketBackend:
     async def process_command(self, command: str) -> str:
         """Process command and return response"""
         try:
+            debug_log(f"process_command: Starting with command: {command}")
+            
             # Interactive commands - tell frontend to handle directly
             if self._is_interactive_command(command):
+                debug_log("process_command: Interactive command detected")
                 return f"INTERACTIVE:{command}\n"
             
             # Try bash first
             if self.bash_executor:
+                debug_log("process_command: Executing bash command")
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                debug_log(f"process_command: Bash result - exit: {exit_code}, stdout: {len(stdout) if stdout else 0} chars")
                 
                 # Clean success - return output directly (bypass AI)
                 if exit_code == 0 and stdout and not stderr:
+                    debug_log("process_command: Clean success, returning bash output")
                     return stdout
                 
                 # Success but no output (like cd) - return empty
                 if exit_code == 0 and not stdout and not stderr:
+                    debug_log("process_command: Empty success, returning empty")
                     return ""
                 
                 # Command failed - let AI handle if ready, otherwise show bash output
+                debug_log(f"process_command: Command needs AI processing, ai_ready: {self.ai_ready}")
                 if self.ai_ready:
                     bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                    debug_log("process_command: Sending to AI")
                     return await self._handle_ai_prompt(command, bash_result)
                 else:
                     # AI not ready - return bash output directly
+                    debug_log("process_command: AI not ready, returning bash output")
                     result = ""
                     if stdout:
                         result += stdout
@@ -84,9 +102,11 @@ class AweshSocketBackend:
                     return result
             else:
                 # No bash executor - AI handles everything
+                debug_log("process_command: No bash executor, sending to AI")
                 return await self._handle_ai_prompt(command)
                 
         except Exception as e:
+            debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
     async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
@@ -135,17 +155,17 @@ class AweshSocketBackend:
                             response = "AI_READY"
                         else:
                             response = "AI_LOADING"
-                        print(f"Backend: STATUS response: {response}", file=sys.stderr)
+                        debug_log(f"STATUS response: {response}")
                     else:
                         # Process regular command
-                        print(f"Backend: Processing command: {command}", file=sys.stderr)
+                        debug_log(f"Processing command: {command}")
                         response = await self.process_command(command)
-                        print(f"Backend: Response ready: {response[:50]}...", file=sys.stderr)
+                        debug_log(f"Response ready: {response[:50]}...")
 
                     # Send response using asyncio
-                    print(f"Backend: Sending response...", file=sys.stderr)
+                    debug_log("Sending response...")
                     await loop.sock_sendall(client_socket, response.encode('utf-8'))
-                    print(f"Backend: Response sent successfully", file=sys.stderr)
+                    debug_log("Response sent successfully")
                     
                 except ConnectionResetError:
                     break
