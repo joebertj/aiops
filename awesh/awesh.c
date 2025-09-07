@@ -213,7 +213,28 @@ void send_command(const char* cmd) {
         return;
     }
     
-    // Send command to backend
+    // First, sync working directory with backend
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd))) {
+        char sync_buffer[1100];
+        snprintf(sync_buffer, sizeof(sync_buffer), "CWD:%s", cwd);
+        send(state.socket_fd, sync_buffer, strlen(sync_buffer), 0);
+        
+        // Wait for sync acknowledgment (brief)
+        fd_set readfds;
+        struct timeval timeout;
+        FD_ZERO(&readfds);
+        FD_SET(state.socket_fd, &readfds);
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+        
+        if (select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
+            char ack[64];
+            recv(state.socket_fd, ack, sizeof(ack) - 1, 0);  // Consume sync response
+        }
+    }
+    
+    // Send actual command to backend
     char buffer[MAX_CMD_LEN];
     snprintf(buffer, sizeof(buffer), "%s", cmd);
     

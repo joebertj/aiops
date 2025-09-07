@@ -68,6 +68,15 @@ class AweshSocketBackend:
         try:
             debug_log(f"process_command: Starting with command: {command}")
             
+            # Handle working directory sync from frontend
+            if command.startswith('CWD:'):
+                new_dir = command[4:]  # Remove 'CWD:' prefix
+                debug_log(f"Syncing working directory to: {new_dir}")
+                self.current_dir = new_dir
+                if self.bash_executor:
+                    self.bash_executor.set_cwd(self.current_dir)
+                return "OK"  # Send acknowledgment
+            
             # Note: cd and pwd should be handled by frontend as builtins
             
             # Interactive commands - tell frontend to handle directly
