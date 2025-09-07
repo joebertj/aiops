@@ -39,91 +39,57 @@ class AweshBackend:
             # Initialize bash executor
             self.bash_executor = BashExecutor(".")
             
+            # Send AI ready signal to parent
+            sys.stdout.write("AI_READY\n")
+            sys.stdout.flush()
+            
         except Exception as e:
             print(f"Backend init error: {e}", file=sys.stderr)
     
     async def process_command(self, command: str) -> dict:
-        """Process command with smart routing"""
+        """Simple routing: bash first, then AI if bash fails"""
         try:
-            # Always try bash first (silently)
+            # Try bash first
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 
-                # If bash succeeded or AI not ready, return bash output
-                if exit_code == 0 or not self.ai_ready:
-                    return {
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": exit_code
-                    }
+                # Bash succeeded - return result
+                if exit_code == 0:
+                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                 
-                # Bash failed and AI ready - check if it looks like bash
-                if self._looks_like_bash_command(command):
-                    # Show bash error
-                    return {
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": exit_code
-                    }
+                # Bash failed - let AI handle it if ready
+                if self.ai_ready:
+                    return await self._handle_ai_prompt(command, {"stdout": stdout, "stderr": stderr, "exit_code": exit_code})
                 else:
-                    # Treat as AI prompt
-                    return await self._handle_ai_prompt(command)
+                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
             else:
-                # No bash executor, treat as AI prompt
+                # No bash executor - AI handles everything
                 return await self._handle_ai_prompt(command)
                 
         except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": f"Backend error: {e}\n",
-                "exit_code": 1
-            }
+            return {"stdout": "", "stderr": f"Backend error: {e}\n", "exit_code": 1}
     
-    def _looks_like_bash_command(self, line: str) -> bool:
-        """Quick bash detection"""
-        if not line.strip():
-            return False
-        
-        # Check for bash syntax
-        if any(char in line for char in '|><;&$`'):
-            return True
-            
-        # Check for common commands
-        first_word = line.strip().split()[0].lower()
-        bash_commands = {
-            'ls', 'cat', 'grep', 'find', 'mkdir', 'rm', 'cp', 'mv', 'chmod',
-            'chown', 'ps', 'kill', 'top', 'df', 'du', 'head', 'tail', 'less',
-            'more', 'wc', 'sort', 'uniq', 'cut', 'awk', 'sed', 'tar', 'zip',
-            'unzip', 'curl', 'wget', 'ssh', 'scp', 'rsync', 'git'
-        }
-        return first_word in bash_commands
     
-    async def _handle_ai_prompt(self, prompt: str) -> dict:
-        """Handle AI prompt and return response"""
+    async def _handle_ai_prompt(self, prompt: str, bash_failed: dict = None) -> dict:
+        """Let AI handle everything - prompts, failed commands, suggestions"""
         if not self.ai_ready:
-            return {
-                "stdout": "🔄 AI still loading...\n",
-                "stderr": "",
-                "exit_code": 0
-            }
+            return {"stdout": "🔄 AI still loading...\n", "stderr": "", "exit_code": 0}
         
         try:
+            # Give AI the context and let it decide what to do
+            if bash_failed:
+                ai_input = f"User typed: {prompt}\nBash failed with: {bash_failed.get('stderr', '')}\nHelp the user."
+            else:
+                ai_input = prompt
+            
             output = "🤖 "
-            async for chunk in self.ai_client.process_prompt(prompt):
+            async for chunk in self.ai_client.process_prompt(ai_input):
                 output += chunk
             output += "\n"
             
-            return {
-                "stdout": output,
-                "stderr": "",
-                "exit_code": 0
-            }
+            return {"stdout": output, "stderr": "", "exit_code": 0}
         except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": f"❌ AI error: {e}\n",
-                "exit_code": 1
-            }
+            return {"stdout": "", "stderr": f"❌ AI error: {e}\n", "exit_code": 1}
 
 
 async def main():

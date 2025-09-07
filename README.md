@@ -2,7 +2,7 @@
 
 **Intelligent automation and management tools for modern infrastructure operations.**
 
-This project showcases AI-first approaches to operations, featuring **awesh** - AIIS (AI-Aware Interactive Shell) that serves as a "free cursor" for shell-native AI assistance, plus supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
+This project showcases AI-first approaches to operations, featuring **awesh** - Awe-Inspired Workspace Environment Shell that serves as a "free cursor" for shell-native AI assistance, plus supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
 
 **💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 

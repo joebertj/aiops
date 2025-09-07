@@ -92,16 +92,25 @@ class AweshShell:
             print(f"⚠️  Backend subprocess failed: {e}")
     
     def _wait_for_backend_ready(self):
-        """Wait for backend ready signal in background"""
+        """Wait for backend ready signals in background"""
         try:
             import select
-            # Wait for socket to be ready
-            ready, _, _ = select.select([self.backend_socket], [], [], 30)  # 30s timeout
-            if ready:
-                ready_msg = self.backend_socket.recv(1024).decode()
-                if ready_msg.strip() == "READY":
-                    self.backend_ready = True
-                    print("✅ AI backend ready!")
+            while True:
+                # Wait for socket to be ready
+                ready, _, _ = select.select([self.backend_socket], [], [], 30)  # 30s timeout
+                if ready:
+                    ready_msg = self.backend_socket.recv(1024).decode()
+                    msg = ready_msg.strip()
+                    if msg == "READY":
+                        self.backend_ready = True
+                        print("🔄 AI backend starting...")
+                    elif msg == "AI_READY":
+                        print("✅ AI backend ready!")
+                        break
+                else:
+                    # Timeout
+                    print("⚠️  Backend initialization timeout")
+                    break
         except Exception as e:
             print(f"⚠️  Backend ready check failed: {e}")
     
@@ -145,13 +154,34 @@ class AweshShell:
                 response = json.loads(data.strip())
                 
                 # Display output
-                if response.get("stdout"):
-                    print(response["stdout"], end='')
-                if response.get("stderr"):
-                    print(response["stderr"], end='', file=sys.stderr)
+                stdout = response.get("stdout", "")
+                stderr = response.get("stderr", "")
+                
+                if stdout:
+                    print(stdout, end='')
+                    
+                    # Check if AI is asking for confirmation to run a command
+                    if "Would you like me to run this? (y/n)" in stdout:
+                        self._handle_command_confirmation(stdout)
+                        
+                if stderr:
+                    print(stderr, end='', file=sys.stderr)
                     
         except Exception as e:
             print(f"Backend response error: {e}")
+    
+    def _handle_command_confirmation(self, ai_response: str):
+        """Simple confirmation handling - let AI format however it wants"""
+        try:
+            # Just get y/n from user - let AI handle the formatting
+            confirmation = input().strip().lower()
+            if confirmation in ['y', 'yes']:
+                print("✅ Confirmed - send to AI to execute")
+                # TODO: Send confirmation back to AI to execute the command
+            else:
+                print("❌ Cancelled")
+        except (KeyboardInterrupt, EOFError):
+            print("\n❌ Cancelled")
     
     def _is_builtin(self, line: str) -> bool:
         """Quick builtin check"""
