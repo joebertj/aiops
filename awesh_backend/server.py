@@ -231,13 +231,26 @@ This allows the system to execute them automatically."""
                     if not command:
                         continue
                     
-                    # Handle status requests
+                    # Handle special commands
                     if command == "STATUS":
                         if self.ai_ready:
                             response = "AI_READY"
                         else:
                             response = "AI_LOADING"
                         debug_log(f"STATUS response: {response}")
+                    elif command.startswith("VERBOSE:"):
+                        # Toggle verbose mode dynamically
+                        verbose_setting = command.split(":", 1)[1].strip()
+                        global VERBOSE
+                        if verbose_setting in ["1", "true", "on"]:
+                            VERBOSE = True
+                            response = "🔧 Verbose mode enabled"
+                        elif verbose_setting in ["0", "false", "off"]:
+                            VERBOSE = False
+                            response = "🔇 Verbose mode disabled"
+                        else:
+                            response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}"
+                        debug_log(f"VERBOSE command: {verbose_setting} -> {VERBOSE}")
                     else:
                         # Process regular command
                         debug_log(f"Processing command: {command}")

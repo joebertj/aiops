@@ -268,6 +268,15 @@ void handle_builtin(const char* cmd) {
         if (chdir(path) != 0) {
             perror("cd");
         }
+    } else if (strcmp(cmd, "verbose") == 0 || strcmp(cmd, "verbose on") == 0) {
+        send_command("VERBOSE:1");
+        return;
+    } else if (strcmp(cmd, "verbose off") == 0) {
+        send_command("VERBOSE:0");
+        return;
+    } else if (strcmp(cmd, "verbose status") == 0) {
+        send_command("VERBOSE:");
+        return;
     }
 }
 
