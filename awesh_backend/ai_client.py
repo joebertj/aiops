@@ -3,6 +3,7 @@ AI client for awesh - handles OpenAI API interactions
 """
 
 import os
+import sys
 import asyncio
 from typing import Optional, AsyncGenerator, Dict, Any
 from pathlib import Path
@@ -12,6 +13,14 @@ openai = None
 AsyncOpenAI = None
 
 from .config import Config
+
+# Global verbose setting - same as server.py
+VERBOSE = os.getenv('VERBOSE', '0') == '1'
+
+def debug_log(message):
+    """Log debug message if verbose mode is enabled"""
+    if VERBOSE:
+        print(f"🔧 AI Client: {message}", file=sys.stderr)
 
 
 class AweshAIClient:
@@ -147,8 +156,7 @@ You have access to the current working directory and can suggest commands based 
                 try:
                     # Streaming response
                     api_params["stream"] = True
-                    if __import__('os').getenv('VERBOSE') == '1':
-                        print(f"🔧 AI Client: Starting streaming request with model {self.config.model}", file=__import__('sys').stderr)
+                    debug_log(f"Starting streaming request with model {self.config.model}")
                     stream = await self.client.chat.completions.create(**api_params)
                     
                     chunk_count = 0
@@ -157,15 +165,12 @@ You have access to the current working directory and can suggest commands based 
                         chunk_count += 1
                         if chunk.choices[0].delta.content:
                             content_chunks += 1
-                            if __import__('os').getenv('VERBOSE') == '1':
-                                print(f"🔧 AI Client: Yielding chunk {content_chunks}: '{chunk.choices[0].delta.content[:50]}...'", file=__import__('sys').stderr)
+                            debug_log(f"Yielding chunk {content_chunks}: '{chunk.choices[0].delta.content[:50]}...'")
                             yield chunk.choices[0].delta.content
                         else:
-                            if __import__('os').getenv('VERBOSE') == '1':
-                                print(f"🔧 AI Client: Empty chunk {chunk_count} (no content)", file=__import__('sys').stderr)
+                            debug_log(f"Empty chunk {chunk_count} (no content)")
                     
-                    if __import__('os').getenv('VERBOSE') == '1':
-                        print(f"🔧 AI Client: Streaming complete - {chunk_count} total chunks, {content_chunks} with content", file=__import__('sys').stderr)
+                    debug_log(f"Streaming complete - {chunk_count} total chunks, {content_chunks} with content")
                     return
                     
                 except Exception as e:
@@ -181,20 +186,16 @@ You have access to the current working directory and can suggest commands based 
             
             # Non-streaming response (either by config or fallback)
             api_params["stream"] = False
-            if __import__('os').getenv('VERBOSE') == '1':
-                print(f"🔧 AI Client: Using non-streaming request with model {self.config.model}", file=__import__('sys').stderr)
+            debug_log(f"Using non-streaming request with model {self.config.model}")
             response = await self.client.chat.completions.create(**api_params)
             
             content = response.choices[0].message.content
-            if __import__('os').getenv('VERBOSE') == '1':
-                print(f"🔧 AI Client: Non-streaming response length: {len(content) if content else 0} chars", file=__import__('sys').stderr)
+            debug_log(f"Non-streaming response length: {len(content) if content else 0} chars")
             if content:
-                if __import__('os').getenv('VERBOSE') == '1':
-                    print(f"🔧 AI Client: Non-streaming preview: '{content[:100]}...'", file=__import__('sys').stderr)
+                debug_log(f"Non-streaming preview: '{content[:100]}...'")
                 yield content
             else:
-                if __import__('os').getenv('VERBOSE') == '1':
-                    print(f"🔧 AI Client: ❌ Non-streaming response is empty!", file=__import__('sys').stderr)
+                debug_log("❌ Non-streaming response is empty!")
                     
         except Exception as e:
             yield f"Error processing prompt: {e}"
