@@ -47,27 +47,19 @@ class BashExecutor:
                 return (process.returncode, "", "")
             else:
                 # Non-interactive commands - capture output
-                process = await asyncio.create_subprocess_shell(
-                    command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self.cwd
-                )
-                
-                # Add timeout to bash commands (2 seconds)
+                # Use subprocess.run with native timeout (more reliable)
                 try:
-                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    # Kill the process and return timeout error
-                    process.kill()
-                    await process.wait()
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        cwd=self.cwd,
+                        timeout=2.0  # 2 second native timeout
+                    )
+                    return (result.returncode, result.stdout, result.stderr)
+                except subprocess.TimeoutExpired:
                     return (1, "", f"Command timed out (interactive command? try AI instead)\n")
-                
-                return (
-                    process.returncode,
-                    stdout.decode('utf-8') if stdout else "",
-                    stderr.decode('utf-8') if stderr else ""
-                )
             
         except Exception as e:
             return (1, "", f"Execution error: {e}\n")
