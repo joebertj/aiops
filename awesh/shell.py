@@ -58,13 +58,17 @@ class AweshShell:
                 if not line.strip():
                     continue
                     
-                # Process ALL commands in background threads for instant prompt
-                if self.router.is_builtin_command(line):
-                    # Built-ins in background thread too for consistency
-                    threading.Thread(target=self._handle_builtin_threaded, args=(line,), daemon=True).start()
-                else:
-                    # All other commands in background thread
-                    threading.Thread(target=self._smart_route_command, args=(line,), daemon=True).start()
+                # Simple routing like original specs - use the router
+                destination, cleaned_line = self.router.route_command(line)
+                
+                if destination == 'bash':
+                    if self.router.is_builtin_command(cleaned_line):
+                        self._handle_builtin(cleaned_line)
+                    else:
+                        self._handle_bash_command(cleaned_line)
+                    self.last_command = cleaned_line
+                else:  # destination == 'ai'
+                    self._handle_ai_prompt(cleaned_line)
                     
             except KeyboardInterrupt:
                 print()  # New line after ^C
@@ -102,14 +106,61 @@ class AweshShell:
                 except PermissionError:
                     print(f"awesh: cd: {new_dir}: Permission denied", file=sys.stderr)
     
-    def _handle_builtin_threaded(self, line: str):
-        """Handle builtin commands in thread"""
-        self._handle_builtin(line)
+    def _looks_obviously_like_bash(self, line: str) -> bool:
+        """Ultra-fast bash detection - only obvious cases"""
+        # Check for obvious bash syntax first
+        if any(char in line for char in '|><;&$`'):
+            return True
+        
+        # Check first word against common commands
+        first_word = line.strip().split()[0].lower() if line.strip() else ""
+        common_commands = {'ls', 'cat', 'grep', 'find', 'cd', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'chmod', 'chown'}
+        if first_word in common_commands:
+            return True
+            
+        # If starts with ./ or has sudo/time prefix
+        if first_word.startswith('./') or first_word in {'sudo', 'time', 'nice'}:
+            return True
+            
+        # Default to AI for anything unclear
+        return False
+    
+    def _execute_bash_fast(self, line: str):
+        """Execute bash command immediately"""
+        exit_code, stdout, stderr = asyncio.run(self.bash_executor.execute(line))
+        
+        if stdout:
+            print(stdout, end='')
+        if stderr:
+            print(stderr, end='', file=sys.stderr)
+            
+        self.last_exit_code = exit_code
         self.last_command = line
                 
     def _handle_bash_command(self, command: str):
-        """Handle bash command execution"""
-        exit_code, stdout, stderr = asyncio.run(self.bash_executor.execute(command))
+        """Handle bash command execution - make it synchronous for speed"""
+        # Use synchronous execution to avoid asyncio overhead
+        import subprocess
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=str(self.current_dir),
+                timeout=30
+            )
+            exit_code = result.returncode
+            stdout = result.stdout
+            stderr = result.stderr
+        except subprocess.TimeoutExpired:
+            exit_code = 124
+            stdout = ""
+            stderr = "Command timed out\n"
+        except Exception as e:
+            exit_code = 1
+            stdout = ""
+            stderr = f"Error: {e}\n"
         
         if stdout:
             print(stdout, end='')
