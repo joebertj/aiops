@@ -65,7 +65,8 @@ class AweshShell:
                 if destination == 'bash':
                     self._handle_bash_command(cleaned_line)
                 else:  # AI
-                    self._handle_ai_prompt(cleaned_line)
+                    # Process AI in background thread so prompt stays instant
+                    threading.Thread(target=self._handle_ai_prompt, args=(cleaned_line,), daemon=True).start()
                     
             except KeyboardInterrupt:
                 print()
