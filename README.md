@@ -2,7 +2,9 @@
 
 **Intelligent automation and management tools for modern infrastructure operations.**
 
-This project showcases AI-first approaches to operations, featuring **awesh** - an AI-aware interactive shell, and supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
+This project showcases AI-first approaches to operations, featuring **awesh** - an AI-aware interactive shell that serves as a "free cursor" for shell-native AI assistance, plus supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
+
+**💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 
 ## 🌟 Featured Components
 
@@ -10,6 +12,9 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 *"AI by default, Bash when I mean Bash"*
 
 The flagship component of AIOps - an intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. Built for operations teams who want the power of conversational AI without losing the precision of shell commands.
+
+**💡 The "Free Cursor" Concept:**
+awesh represents what we really want from AI-assisted development: the AI assistance without the IDE bloat. It's a "free cursor" that's purely shell-based - giving you AI-powered development in your terminal without the overhead of editors or opinionated tool prompts.
 
 **🌟 Core Philosophy:**
 - **Zero-Friction AI**: No special syntax - just type naturally
@@ -431,10 +436,16 @@ During development of the Test Suite MCP, we encountered limitations with Cursor
 **💡 Development Philosophy:**
 As vi users, we prefer simple, direct tools that don't impose their own opinions. IDEs are often overkill - vi is sufficient for most development tasks. Even modern alternatives like neovim introduce unnecessary complexity. The best tools get out of your way and let you work.
 
+**🤔 The "Free Cursor" Vision:**
+We use Cursor but don't really leverage any of the VSCode features - we just want the AI assistance without the IDE overhead. What we need is a "free cursor" that's purely shell-based: AI assistance in the terminal without the bloated editor interface or opinionated tool prompts.
+
+This is essentially what **awesh** represents - a shell-native AI assistant that provides the benefits of AI-powered development without the constraints of IDE-based tools.
+
 **🔧 Solution:**
-- Test Suite MCP development moved to vi + terminal environment
+- Test Suite MCP development moved to vi + terminal environment  
 - Clean development without IDE tool interference
 - Direct control over AI behavior and constraints
+- **awesh** as the prototype for shell-native AI assistance
 
 This experience reinforces why simple, unopinionated tools are superior for specialized development work.
 
