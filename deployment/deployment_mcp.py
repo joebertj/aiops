@@ -104,25 +104,49 @@ def kill_processes(force=False):
     killed_processes = []
     
     try:
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        # Find and kill awesh processes
+        for proc in psutil.process_iter(['pid', 'name']):
             try:
-                if proc.info['name'] == 'awesh' or \
-                   (proc.info['cmdline'] and 'awesh_backend' in ' '.join(proc.info['cmdline'])):
-                    
+                if proc.info['name'] == 'awesh':
                     pid = proc.info['pid']
-                    name = proc.info['name']
                     
                     if force:
                         os.kill(pid, signal.SIGKILL)
-                        log(f"💀 Force killed {name} (PID: {pid})")
+                        log(f"💀 Force killed awesh (PID: {pid})")
                     else:
                         os.kill(pid, signal.SIGTERM)
-                        log(f"🛑 Terminated {name} (PID: {pid})")
+                        log(f"🛑 Terminated awesh (PID: {pid})")
                     
                     killed_processes.append(pid)
             
             except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
                 continue
+        
+        # Find processes using the awesh socket
+        socket_path = Path.home() / ".awesh.sock"
+        if socket_path.exists():
+            try:
+                # Use lsof to find processes using the socket
+                result = subprocess.run([
+                    "lsof", str(socket_path)
+                ], capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')[1:]  # Skip header
+                    for line in lines:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            pid = int(parts[1])
+                            if pid not in killed_processes:
+                                if force:
+                                    os.kill(pid, signal.SIGKILL)
+                                    log(f"💀 Force killed socket process (PID: {pid})")
+                                else:
+                                    os.kill(pid, signal.SIGTERM)
+                                    log(f"🛑 Terminated socket process (PID: {pid})")
+                                killed_processes.append(pid)
+            except (subprocess.SubprocessError, ValueError, ProcessLookupError):
+                pass
         
         if not killed_processes:
             log("ℹ️  No awesh processes found running")
