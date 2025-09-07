@@ -71,6 +71,9 @@ void load_config() {
         } else if (strcmp(key, "VERBOSE") == 0) {
             state.verbose = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
+        
+        // Set all config values as environment variables for backend
+        setenv(key, value, 1);
     }
     
     fclose(file);
