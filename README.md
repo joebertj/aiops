@@ -9,14 +9,40 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 ### 🐚 **awesh** - AI-Aware Interactive Shell
 *"AI by default, Bash when I mean Bash"*
 
-An intelligent shell that automatically routes commands between AI processing and Bash execution based on smart content detection. Perfect for operations teams who want natural language infrastructure management with the reliability of traditional shell commands.
+The flagship component of AIOps - an intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. Built for operations teams who want the power of conversational AI without losing the precision of shell commands.
 
-**Key Features:**
-- **Smart Routing**: Automatically detects whether input should go to AI or Bash
-- **Natural Language Operations**: Ask questions, get summaries, analyze systems
-- **Traditional Shell**: Full Bash compatibility for exact commands
+**🌟 Core Philosophy:**
+- **Zero-Friction AI**: No special syntax - just type naturally
+- **Intelligent Routing**: Automatically detects AI vs Bash intent
+- **Context-Aware**: Remembers your environment and command history
+- **Safety First**: AI suggestions with human control
+- **Gradual Adoption**: Works alongside your existing workflow
+
+**🚀 Key Features:**
+- **Smart Command Routing**: Detects shell syntax, commands, and natural language automatically
+- **OpenAI Integration**: Powered by GPT-4/GPT-5 with configurable models
+- **System Prompt Support**: Customizable AI behavior for your operations context  
+- **Streaming Responses**: Real-time AI output with conversation continuity
+- **Environment Variable Support**: Easy configuration via `~/.aweshrc`
 - **MCP Integration**: Secure tool execution through Model Context Protocol
-- **Streaming Responses**: Real-time AI output with full conversation context
+- **Full Bash Compatibility**: All your existing commands work exactly as before
+
+**💡 Example Usage:**
+```bash
+awesh> ls -la                    # → Bash execution
+awesh> what files are here?      # → AI analysis
+awesh> find . -name "*.py"       # → Bash execution  
+awesh> explain this error        # → AI interpretation
+awesh> cd /var/log && analyze the latest errors  # → Mixed AI + Bash
+```
+
+**🔧 Installation:**
+```bash
+cd awesh/
+./install.sh
+# Configure your OpenAI API key in ~/.aweshrc
+awesh
+```
 
 [📖 Learn more about awesh →](./awesh/)
 
@@ -285,14 +311,102 @@ This project demonstrates several key principles:
 4. **Gradual Adoption**: Works alongside existing tools and processes
 5. **Knowledge Sharing**: AI learns from team practices and tribal knowledge
 
-## 📚 Model Context Protocol (MCP)
+## 📚 Model Context Protocol (MCP) Servers
 
-All AI integrations use the Model Context Protocol for secure, standardized tool execution:
+AIOps leverages the Model Context Protocol to provide secure, standardized AI tool execution across multiple infrastructure platforms. Each MCP server specializes in a specific domain while maintaining consistent interfaces and security policies.
 
-- **🔒 Security**: Strict policy enforcement and audit trails
-- **🔧 Extensibility**: Plugin architecture for new infrastructure platforms
-- **📊 Observability**: Full logging and monitoring of AI actions
-- **🤝 Interoperability**: Works with any MCP-compatible AI system
+### 🎯 Available MCP Servers
+
+#### ☸️ **Kubernetes MCP Server**
+*Natural language to Kubernetes API - Direct cluster communication*
+
+Our flagship MCP server that converts plain English into direct Kubernetes API calls, bypassing kubectl entirely for more efficient and AI-friendly cluster management.
+
+**🚀 Key Features:**
+- **Direct API Access**: Uses Kubernetes Python client for native cluster communication
+- **Natural Language Processing**: "Show me unhealthy pods" → API calls + human-readable output
+- **Smart Intent Recognition**: Automatically detects operations from conversational input
+- **Rich Contextual Output**: Human summaries with raw data for AI consumption
+- **Multi-Namespace Support**: Seamlessly works across cluster namespaces
+- **Real-time Monitoring**: Live cluster state analysis and reporting
+
+**📋 Supported Operations:**
+- **Cluster Health**: Overall cluster status, node health, component monitoring
+- **Pod Management**: List, describe, logs, create, delete, scale operations
+- **Service Discovery**: Service listing, endpoint analysis, port mapping
+- **Deployment Control**: Rollouts, scaling, history, rollback operations
+- **Resource Management**: ConfigMaps, Secrets, PVs, Storage Classes
+- **RBAC & Security**: Role analysis, permission checking, policy management
+- **Batch Operations**: Jobs, CronJobs, scheduled task management
+
+**🔧 Usage:**
+```bash
+cd kubernetes/
+python3 interactive_client.py
+
+# Try these natural language prompts:
+"Show me the cluster health"
+"What pods are failing in kube-system?"
+"Scale the traefik deployment to 3 replicas"
+"Show me all services and their endpoints"
+```
+
+[📖 Full Kubernetes MCP Documentation →](./kubernetes/)
+
+---
+
+#### 🚀 **Deployment MCP Server** *(Coming Soon)*
+*AI-powered deployment automation and pipeline management*
+
+Advanced deployment orchestration with natural language controls for CI/CD pipelines, release management, and deployment strategies.
+
+**🎯 Planned Features:**
+- **Pipeline Orchestration**: "Deploy version 2.1.3 to staging"
+- **Release Management**: Automated rollback, canary deployments, blue-green strategies
+- **Multi-Environment Control**: Development, staging, production deployment flows
+- **Integration Hub**: GitHub Actions, GitLab CI, Jenkins, ArgoCD connectivity
+- **Deployment Analytics**: Success rates, performance metrics, failure analysis
+
+*Will be copied from `~/AI/kubernetes_web` deployment automation components*
+
+---
+
+#### 🧪 **Test Suite MCP Server** *(Coming Soon)*
+*Intelligent test execution and quality assurance automation*
+
+Comprehensive testing automation with AI-driven test selection, execution, and result analysis for continuous quality assurance.
+
+**🎯 Planned Features:**
+- **Smart Test Selection**: "Run tests affected by the API changes"
+- **Quality Gate Management**: Automated pass/fail criteria with AI analysis
+- **Test Environment Provisioning**: Dynamic test infrastructure creation
+- **Result Intelligence**: AI-powered failure analysis and debugging suggestions
+- **Coverage Analysis**: Gap identification and test recommendation
+
+*Will be copied from `~/AI/kubernetes_web` test automation framework*
+
+---
+
+### 🔒 MCP Security & Standards
+
+All MCP servers in AIOps follow strict security and operational standards:
+
+- **🛡️ Policy Enforcement**: Configurable allow-lists for commands and resources
+- **📊 Audit Logging**: Complete operation trails with redacted sensitive data  
+- **⏱️ Resource Limits**: CPU, memory, and timeout controls for all operations
+- **🔐 Authentication**: Integration with existing cluster RBAC and credentials
+- **🚨 Safety Controls**: Dry-run modes and confirmation workflows for destructive operations
+- **📈 Monitoring**: Built-in metrics and health checks for MCP server performance
+
+### 🔧 MCP Development Framework
+
+The AIOps MCP framework provides:
+
+- **🏗️ Server Templates**: Rapid development of new infrastructure MCP servers
+- **🧪 Testing Utilities**: Comprehensive test suites for MCP server validation
+- **📚 Documentation Tools**: Auto-generated API docs and usage examples
+- **🔄 Hot Reloading**: Development-friendly server restart and configuration updates
+- **📊 Performance Profiling**: Built-in metrics and performance analysis tools
 
 ## 🤝 Contributing
 
