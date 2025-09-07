@@ -82,7 +82,7 @@ int start_backend() {
     state.backend_pid = fork();
     if (state.backend_pid == 0) {
         // Child: start Python backend
-        execl("/usr/bin/python3", "python3", "awesh/backend_socket.py", NULL);
+        execl("/usr/bin/python3", "python3", "backend_socket.py", NULL);
         perror("Failed to start backend");
         exit(1);
     } else if (state.backend_pid < 0) {
