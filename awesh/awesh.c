@@ -298,8 +298,8 @@ void send_command(const char* cmd) {
 int is_awesh_command(const char* cmd) {
     return (strcmp(cmd, "aweh") == 0 ||
             strcmp(cmd, "awes") == 0 ||
-            strcmp(cmd, "awev") == 0 ||
-            strcmp(cmd, "awea") == 0);
+            strncmp(cmd, "awev", 4) == 0 ||
+            strncmp(cmd, "awea", 4) == 0);
 }
 
 int is_builtin(const char* cmd) {
@@ -316,12 +316,12 @@ void handle_awesh_command(const char* cmd) {
         printf("  awes              Show verbose status (API provider, model, debug state)\n");
         printf("\n🔧 Verbose Debug:\n");
         printf("  awev              Show debug logging status\n");
-        printf("  awev on           Enable debug logging (via AI)\n");
-        printf("  awev off          Disable debug logging (via AI)\n");
+        printf("  awev on           Enable debug logging\n");
+        printf("  awev off          Disable debug logging\n");
         printf("\n🤖 AI Provider:\n");
         printf("  awea              Show current AI provider and model\n");
-        printf("  awea openai       Switch to OpenAI (via AI)\n");
-        printf("  awea openrouter   Switch to OpenRouter (via AI)\n");
+        printf("  awea openai       Switch to OpenAI\n");
+        printf("  awea openrouter   Switch to OpenRouter\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
@@ -353,9 +353,27 @@ void handle_awesh_command(const char* cmd) {
         printf("📊 Backend PID: %d\n", state.backend_pid);
         printf("🔌 Socket FD: %d\n", state.socket_fd);
         printf("👁️  Show AI Status: %s\n", state.show_ai_status ? "enabled" : "disabled");
-    } else if (strcmp(cmd, "awev") == 0) {
-        printf("🔧 Debug Logging: %s\n", state.verbose ? "enabled" : "disabled");
-    } else if (strcmp(cmd, "awea") == 0) {
+    } else if (strncmp(cmd, "awev", 4) == 0) {
+        // Parse awev command and arguments
+        if (strcmp(cmd, "awev") == 0) {
+            // Just "awev" - show status
+            printf("🔧 Debug Logging: %s\n", state.verbose ? "enabled" : "disabled");
+        } else if (strcmp(cmd, "awev on") == 0) {
+            // Enable verbose logging
+            update_config_file("VERBOSE", "1");
+            send_command("VERBOSE:1");
+            state.verbose = 1;
+            printf("🔧 Debug logging enabled\n");
+        } else if (strcmp(cmd, "awev off") == 0) {
+            // Disable verbose logging  
+            update_config_file("VERBOSE", "0");
+            send_command("VERBOSE:0");
+            state.verbose = 0;
+            printf("🔧 Debug logging disabled\n");
+        } else {
+            printf("Usage: awev [on|off]\n");
+        }
+    } else if (strncmp(cmd, "awea", 4) == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
         const char* model = NULL;
         
@@ -365,8 +383,24 @@ void handle_awesh_command(const char* cmd) {
             model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
         }
         
-        printf("🤖 API Provider: %s\n", ai_provider);
-        printf("📋 Model: %s\n", model);
+        // Parse awea command and arguments
+        if (strcmp(cmd, "awea") == 0) {
+            // Just "awea" - show current provider and model
+            printf("🤖 API Provider: %s\n", ai_provider);
+            printf("📋 Model: %s\n", model);
+        } else if (strcmp(cmd, "awea openai") == 0) {
+            // Switch to OpenAI
+            update_config_file("AI_PROVIDER", "openai");
+            send_command("AI_PROVIDER:openai");
+            printf("🤖 Switching to OpenAI... (restart awesh to take effect)\n");
+        } else if (strcmp(cmd, "awea openrouter") == 0) {
+            // Switch to OpenRouter
+            update_config_file("AI_PROVIDER", "openrouter");
+            send_command("AI_PROVIDER:openrouter");
+            printf("🤖 Switching to OpenRouter... (restart awesh to take effect)\n");
+        } else {
+            printf("Usage: awea [openai|openrouter]\n");
+        }
     }
 }
 
