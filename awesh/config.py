@@ -7,7 +7,6 @@ import configparser
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
-from dotenv import load_dotenv
 
 
 @dataclass
@@ -46,7 +45,16 @@ class Config:
         # Load from ~/.aweshrc if it exists (simple key=value format)
         aweshrc_path = Path.home() / '.aweshrc'
         if aweshrc_path.exists():
-            load_dotenv(aweshrc_path)
+            # Parse key=value pairs manually
+            try:
+                with open(aweshrc_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '=' in line and not line.startswith('#'):
+                            key, value = line.split('=', 1)
+                            os.environ[key.strip()] = value.strip()
+            except Exception as e:
+                print(f"Warning: Could not parse {aweshrc_path}: {e}")
         
         # Override model from environment variable if set
         if os.getenv('OPENAI_MODEL'):
