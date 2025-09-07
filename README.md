@@ -78,12 +78,16 @@ awesh embraces the **minimalistic yet powerful** approach that operations profes
 
 **💡 Example Usage:**
 ```bash
-awesh> ls -la                    # → Bash execution
-awesh> what files are here?      # → AI analysis
-awesh> find . -name "*.py"       # → Bash execution  
-awesh> explain this error        # → AI interpretation
-awesh> cd /var/log && analyze the latest errors  # → Mixed AI + Bash
+awesh> ls -la                              # → Bash execution
+awesh> what files are here?                # → AI analysis
+awesh> find . -name "*.py"                 # → Bash execution  
+awesh> explain this error                  # → AI interpretation
+awesh> cat file.txt | grep error           # → Bash (pipe detected)
+awesh> summarize this directory structure  # → AI analysis
+awesh> why did the build fail?             # → AI interpretation
 ```
+
+**"AI by default, Bash when I mean Bash."**
 
 **🔧 Installation:**
 ```bash
