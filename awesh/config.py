@@ -43,11 +43,6 @@ class Config:
         """Load configuration from file and environment variables"""
         config = cls()
         
-        # Load environment variables from .env file if it exists
-        env_file = Path(__file__).parent / '.env'
-        if env_file.exists():
-            load_dotenv(env_file)
-        
         # Load from ~/.aweshrc if it exists (simple key=value format)
         aweshrc_path = Path.home() / '.aweshrc'
         if aweshrc_path.exists():
