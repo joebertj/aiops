@@ -54,7 +54,14 @@ class BashExecutor:
                     cwd=self.cwd
                 )
                 
-                stdout, stderr = await process.communicate()
+                # Add timeout to bash commands (2 seconds)
+                try:
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    # Kill the process and return timeout error
+                    process.kill()
+                    await process.wait()
+                    return (1, "", f"Command timed out (interactive command? try AI instead)\n")
                 
                 return (
                     process.returncode,
