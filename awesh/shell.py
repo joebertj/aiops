@@ -37,38 +37,27 @@ class AweshShell:
         self.ai_init_message_shown = False
         
     def run(self):
-        """Main shell loop - simple like bash"""
-        # Show MOTD
+        """Main shell loop - instant like bash"""
+        # Show MOTD and prompt immediately - no waiting
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Model: {self.config.model}")
         print()
         
-        # Start AI loading in background (don't wait)
-        threading.Thread(target=self._initialize_ai_thread, daemon=True).start()
+        # Start loading heavy AI libraries in background
+        threading.Thread(target=self._load_ai_libraries_background, daemon=True).start()
         
-        # Simple shell loop like bash/python
+        # Simple shell loop - instant prompt
         while self.running:
             try:
-                # Show prompt immediately
+                # Show prompt immediately - no delays
                 print(self.config.prompt_label, end='', flush=True)
                 line = input()
                 
                 if not line.strip():
                     continue
                 
-                # Handle builtins first (fastest)
-                if self.router.is_builtin_command(line):
-                    self._handle_builtin(line)
-                    continue
-                
-                # Route everything else
-                destination, cleaned_line = self.router.route_command(line)
-                
-                if destination == 'bash':
-                    self._handle_bash_command(cleaned_line)
-                else:  # AI
-                    # Process AI in background thread so prompt stays instant
-                    threading.Thread(target=self._handle_ai_prompt, args=(cleaned_line,), daemon=True).start()
+                # Process command in background to keep prompt instant
+                threading.Thread(target=self._process_command, args=(line,), daemon=True).start()
                     
             except KeyboardInterrupt:
                 print()
@@ -77,6 +66,21 @@ class AweshShell:
                 break
         
         print("Goodbye!")
+    
+    def _process_command(self, line: str):
+        """Process any command in background thread"""
+        # Handle builtins
+        if self.router.is_builtin_command(line):
+            self._handle_builtin(line)
+            return
+        
+        # Route everything else
+        destination, cleaned_line = self.router.route_command(line)
+        
+        if destination == 'bash':
+            self._handle_bash_command(cleaned_line)
+        else:  # AI
+            self._handle_ai_prompt(cleaned_line)
                 
     def _handle_builtin(self, command: str):
         """Handle awesh builtin commands"""
@@ -299,9 +303,15 @@ class AweshShell:
         # Default: if it's a single word or short phrase, assume it's a bash command attempt
         return len(words) <= 2
             
-    def _initialize_ai_thread(self):
-        """Initialize AI client in background thread"""
+    def _load_ai_libraries_background(self):
+        """Load heavy AI libraries in background after prompt is shown"""
         try:
+            # Import heavy libraries only when needed
+            global openai, AsyncOpenAI
+            import openai
+            from openai import AsyncOpenAI
+            
+            # Now initialize the AI client
             asyncio.run(self.ai_client.initialize())
             self.ai_ready = True
             print("✅ AI client ready!")

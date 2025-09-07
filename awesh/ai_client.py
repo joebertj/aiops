@@ -7,8 +7,9 @@ import asyncio
 from typing import Optional, AsyncGenerator, Dict, Any
 from pathlib import Path
 
-import openai
-from openai import AsyncOpenAI
+# Lazy imports - only import when needed
+openai = None
+AsyncOpenAI = None
 
 try:
     from .config import Config
@@ -26,6 +27,11 @@ class AweshAIClient:
         
     async def initialize(self):
         """Initialize the AI client and load system prompt"""
+        # Import OpenAI when actually needed
+        global AsyncOpenAI
+        if AsyncOpenAI is None:
+            from openai import AsyncOpenAI
+            
         # Initialize OpenAI client
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
