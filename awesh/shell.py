@@ -58,17 +58,14 @@ class AweshShell:
                 if not line.strip():
                     continue
                     
-                # Route the command
-                destination, cleaned_line = self.router.route_command(line)
-                
-                if destination == 'bash':
-                    if self.router.is_builtin_command(cleaned_line):
-                        self._handle_builtin(cleaned_line)
-                    else:
-                        self._handle_bash_command(cleaned_line)
-                    self.last_command = cleaned_line
-                else:  # destination == 'ai'
-                    self._handle_ai_prompt(cleaned_line)
+                # Smart routing: always try bash first, then AI validation
+                if self.router.is_builtin_command(line):
+                    # Built-ins always execute immediately
+                    self._handle_builtin(line)
+                    self.last_command = line
+                else:
+                    # Try bash first (silently), then smart routing
+                    self._smart_route_command(line)
                     
             except KeyboardInterrupt:
                 print()  # New line after ^C
@@ -154,6 +151,69 @@ class AweshShell:
             print("\n⏹️  AI response interrupted")
         except Exception as e:
             print(f"\n❌ Error processing AI prompt: {e}")
+    
+    def _smart_route_command(self, line: str):
+        """Smart routing: try bash first, then AI validation if available"""
+        # Always try bash execution first (capture output silently)
+        exit_code, stdout, stderr = asyncio.run(self.bash_executor.execute(line))
+        
+        if not self.ai_ready:
+            # AI not loaded yet - show bash results regardless
+            if stdout:
+                print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
+            self.last_exit_code = exit_code
+            self.last_command = line
+            return
+        
+        # AI is available - ask it to validate if this was a real bash command
+        if exit_code == 0 or self._looks_like_bash_command(line):
+            # Command succeeded or looks like bash - show bash output
+            if stdout:
+                print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
+            self.last_exit_code = exit_code
+            self.last_command = line
+        else:
+            # Command failed and might be a natural language prompt
+            # Ask AI to validate
+            if self._ai_thinks_its_bash(line):
+                # AI says it's a real bash command that just failed
+                if stdout:
+                    print(stdout, end='')
+                if stderr:
+                    print(stderr, end='', file=sys.stderr)
+                self.last_exit_code = exit_code
+                self.last_command = line
+            else:
+                # AI says it's not a bash command - treat as prompt
+                self._handle_ai_prompt(line)
+    
+    def _looks_like_bash_command(self, line: str) -> bool:
+        """Quick heuristic to check if line looks like a bash command"""
+        # If it has obvious bash syntax, it's probably bash
+        bash_indicators = ['|', '>', '>>', '<', '&&', '||', ';', '$', '`']
+        return any(indicator in line for indicator in bash_indicators)
+    
+    def _ai_thinks_its_bash(self, line: str) -> bool:
+        """Ask AI if this looks like a bash command (quick validation)"""
+        try:
+            validation_prompt = f"Is this a valid bash/shell command? Answer only 'YES' or 'NO': {line}"
+            
+            async def quick_ai_check():
+                response_parts = []
+                async for chunk in self.ai_client.process_prompt(validation_prompt):
+                    response_parts.append(chunk)
+                return ''.join(response_parts).strip().upper()
+            
+            response = asyncio.run(quick_ai_check())
+            return response.startswith('YES')
+            
+        except Exception:
+            # If AI check fails, assume it's bash (safer default)
+            return True
             
     def _initialize_ai_thread(self):
         """Initialize AI client in background thread"""
