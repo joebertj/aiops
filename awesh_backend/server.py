@@ -183,7 +183,7 @@ This allows the system to execute them automatically."""
             return f"❌ AI error: {e}\n"
     
     async def _extract_and_execute_commands(self, ai_response: str) -> str:
-        """Extract awesh: commands from AI response and execute them"""
+        """Extract awesh: commands from AI response and execute them using stack approach"""
         import re
         
         debug_log("Extracting awesh: commands from AI response")
@@ -196,24 +196,61 @@ This allows the system to execute them automatically."""
             return f"🤖 {ai_response}\n"
         
         debug_log(f"Found {len(awesh_commands)} awesh: commands")
-        output = ""
         
-        for i, command in enumerate(awesh_commands):
-            command = command.strip()
-            debug_log(f"Executing awesh command {i+1}: {command}")
+        # Create stack of commands (reverse order so we pop from first to last)
+        command_stack = [cmd.strip() for cmd in reversed(awesh_commands)]
+        failed_commands = []
+        
+        # Try commands one by one until we find one that works
+        while command_stack:
+            command = command_stack.pop()
+            debug_log(f"Trying command: {command}")
             
             # Execute the command using bash executor
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 
-                if stdout:
-                    output += stdout
-                if stderr:
-                    output += stderr
+                debug_log(f"Command result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
                 
-                debug_log(f"Command {i+1} result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars")
+                # Check if command succeeded (exit_code=0 and no stderr)
+                if exit_code == 0 and not stderr:
+                    debug_log(f"Command succeeded: {command}")
+                    return stdout if stdout else "Command executed successfully (no output)\n"
+                else:
+                    # Command failed, add to failed list and try next
+                    debug_log(f"Command failed: {command} (exit={exit_code})")
+                    failed_commands.append(command)
         
-        return output if output else "No output from commands\n"
+        # All commands failed, try to get alternatives from AI
+        debug_log(f"All {len(failed_commands)} commands failed, requesting alternatives")
+        return await self._request_command_alternatives(failed_commands)
+    
+    async def _request_command_alternatives(self, failed_commands: list) -> str:
+        """Request alternative commands from AI when all initial commands fail"""
+        debug_log("Requesting alternative commands from AI")
+        
+        failed_list = "\n".join([f"- {cmd}" for cmd in failed_commands])
+        retry_prompt = f"""The following commands failed:
+{failed_list}
+
+Please provide alternative awesh: commands that might work better. Return only working bash commands in the format:
+awesh: <command>"""
+        
+        # Send retry request to AI
+        try:
+            retry_response = await self._handle_ai_prompt(retry_prompt)
+            
+            # Check if AI provided new awesh: commands
+            if "awesh:" in retry_response:
+                debug_log("AI provided alternative commands, trying them")
+                return await self._extract_and_execute_commands(retry_response)
+            else:
+                debug_log("AI didn't provide alternative commands")
+                return f"❌ All commands failed and no alternatives provided:\n{failed_list}\n\n🤖 {retry_response}\n"
+                
+        except Exception as e:
+            debug_log(f"Error requesting alternatives: {e}")
+            return f"❌ All commands failed:\n{failed_list}\n"
     
     async def handle_client(self, client_socket):
         """Handle client connection"""
