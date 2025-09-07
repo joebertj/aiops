@@ -147,7 +147,8 @@ You have access to the current working directory and can suggest commands based 
                 try:
                     # Streaming response
                     api_params["stream"] = True
-                    print(f"🔧 AI Client: Starting streaming request with model {self.config.model}", file=__import__('sys').stderr)
+                    if __import__('os').getenv('VERBOSE') == '1':
+                        print(f"🔧 AI Client: Starting streaming request with model {self.config.model}", file=__import__('sys').stderr)
                     stream = await self.client.chat.completions.create(**api_params)
                     
                     chunk_count = 0
@@ -156,12 +157,15 @@ You have access to the current working directory and can suggest commands based 
                         chunk_count += 1
                         if chunk.choices[0].delta.content:
                             content_chunks += 1
-                            print(f"🔧 AI Client: Yielding chunk {content_chunks}: '{chunk.choices[0].delta.content[:50]}...'", file=__import__('sys').stderr)
+                            if __import__('os').getenv('VERBOSE') == '1':
+                                print(f"🔧 AI Client: Yielding chunk {content_chunks}: '{chunk.choices[0].delta.content[:50]}...'", file=__import__('sys').stderr)
                             yield chunk.choices[0].delta.content
                         else:
-                            print(f"🔧 AI Client: Empty chunk {chunk_count} (no content)", file=__import__('sys').stderr)
+                            if __import__('os').getenv('VERBOSE') == '1':
+                                print(f"🔧 AI Client: Empty chunk {chunk_count} (no content)", file=__import__('sys').stderr)
                     
-                    print(f"🔧 AI Client: Streaming complete - {chunk_count} total chunks, {content_chunks} with content", file=__import__('sys').stderr)
+                    if __import__('os').getenv('VERBOSE') == '1':
+                        print(f"🔧 AI Client: Streaming complete - {chunk_count} total chunks, {content_chunks} with content", file=__import__('sys').stderr)
                     return
                     
                 except Exception as e:
@@ -177,16 +181,20 @@ You have access to the current working directory and can suggest commands based 
             
             # Non-streaming response (either by config or fallback)
             api_params["stream"] = False
-            print(f"🔧 AI Client: Using non-streaming request with model {self.config.model}", file=__import__('sys').stderr)
+            if __import__('os').getenv('VERBOSE') == '1':
+                print(f"🔧 AI Client: Using non-streaming request with model {self.config.model}", file=__import__('sys').stderr)
             response = await self.client.chat.completions.create(**api_params)
             
             content = response.choices[0].message.content
-            print(f"🔧 AI Client: Non-streaming response length: {len(content) if content else 0} chars", file=__import__('sys').stderr)
+            if __import__('os').getenv('VERBOSE') == '1':
+                print(f"🔧 AI Client: Non-streaming response length: {len(content) if content else 0} chars", file=__import__('sys').stderr)
             if content:
-                print(f"🔧 AI Client: Non-streaming preview: '{content[:100]}...'", file=__import__('sys').stderr)
+                if __import__('os').getenv('VERBOSE') == '1':
+                    print(f"🔧 AI Client: Non-streaming preview: '{content[:100]}...'", file=__import__('sys').stderr)
                 yield content
             else:
-                print(f"🔧 AI Client: ❌ Non-streaming response is empty!", file=__import__('sys').stderr)
+                if __import__('os').getenv('VERBOSE') == '1':
+                    print(f"🔧 AI Client: ❌ Non-streaming response is empty!", file=__import__('sys').stderr)
                     
         except Exception as e:
             yield f"Error processing prompt: {e}"
