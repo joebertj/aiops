@@ -296,7 +296,8 @@ void send_command(const char* cmd) {
 }
 
 int is_awesh_command(const char* cmd) {
-    return (strcmp(cmd, "aweh") == 0 ||
+    return (strcmp(cmd, "awesh") == 0 ||
+            strcmp(cmd, "aweh") == 0 ||
             strcmp(cmd, "awes") == 0 ||
             strcmp(cmd, "awev") == 0 ||
             strcmp(cmd, "awev on") == 0 ||
@@ -313,7 +314,10 @@ int is_builtin(const char* cmd) {
 }
 
 void handle_awesh_command(const char* cmd) {
-    if (strcmp(cmd, "aweh") == 0) {
+    if (strcmp(cmd, "awesh") == 0) {
+        printf("awesh v0.1.0 - AI-aware Interactive Shell\n");
+        printf("You are already running awesh! Type 'aweh' for help.\n");
+    } else if (strcmp(cmd, "aweh") == 0) {
         printf("🎛️  Awesh Control Commands:\n");
         printf("\n📋 Help:\n");
         printf("  aweh              Show this help\n");
