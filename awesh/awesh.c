@@ -423,13 +423,8 @@ void handle_builtin(const char* cmd) {
         }
         
         if (chdir(path) == 0) {
-            // Success - send working directory update to backend
-            char cwd[1024];
-            if (getcwd(cwd, sizeof(cwd))) {
-                char sync_cmd[1100];
-                snprintf(sync_cmd, sizeof(sync_cmd), "SYNC_CWD:%s", cwd);
-                send_command(sync_cmd);
-            }
+            // Success - directory changed instantly
+            // Backend will sync on next command that needs it
         } else {
             perror("cd");
         }
@@ -501,14 +496,8 @@ int main() {
         if (is_awesh_command(line)) {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
-            if (state.verbose) {
-                fprintf(stderr, "DEBUG: Handling builtin command: %s\n", line);
-            }
             handle_builtin(line);
         } else {
-            if (state.verbose) {
-                fprintf(stderr, "DEBUG: Sending to backend: %s\n", line);
-            }
             send_command(line);
         }
         
