@@ -76,6 +76,49 @@ void load_config() {
     fclose(file);
 }
 
+void update_config_file(const char* key, const char* value) {
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", getenv("HOME"));
+    
+    // Read existing config
+    char lines[100][256];  // Max 100 lines, 256 chars each
+    int line_count = 0;
+    int key_found = 0;
+    
+    FILE *file = fopen(config_path, "r");
+    if (file) {
+        while (fgets(lines[line_count], sizeof(lines[line_count]), file) && line_count < 99) {
+            // Remove newline for processing
+            lines[line_count][strcspn(lines[line_count], "\n")] = 0;
+            
+            // Check if this line contains our key
+            if (strncmp(lines[line_count], key, strlen(key)) == 0 && 
+                lines[line_count][strlen(key)] == '=') {
+                // Update existing key
+                snprintf(lines[line_count], sizeof(lines[line_count]), "%s=%s", key, value);
+                key_found = 1;
+            }
+            line_count++;
+        }
+        fclose(file);
+    }
+    
+    // If key wasn't found, add it
+    if (!key_found && line_count < 99) {
+        snprintf(lines[line_count], sizeof(lines[line_count]), "%s=%s", key, value);
+        line_count++;
+    }
+    
+    // Write back to file
+    file = fopen(config_path, "w");
+    if (file) {
+        for (int i = 0; i < line_count; i++) {
+            fprintf(file, "%s\n", lines[i]);
+        }
+        fclose(file);
+    }
+}
+
 void handle_sigint(int sig __attribute__((unused))) {
     // Ctrl+C should just return to prompt, not exit
     printf("\n");
@@ -269,9 +312,11 @@ void handle_builtin(const char* cmd) {
             perror("cd");
         }
     } else if (strcmp(cmd, "verbose") == 0 || strcmp(cmd, "verbose on") == 0) {
+        update_config_file("VERBOSE", "1");
         send_command("VERBOSE:1");
         return;
     } else if (strcmp(cmd, "verbose off") == 0) {
+        update_config_file("VERBOSE", "0");
         send_command("VERBOSE:0");
         return;
     } else if (strcmp(cmd, "verbose status") == 0) {
