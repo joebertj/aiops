@@ -176,16 +176,45 @@ void send_command(const char* cmd) {
         return;
     }
     
-    // Read response with timeout
+    // Read response with timeout and thinking dots
     fd_set readfds;
     struct timeval timeout;
+    int dots_shown = 0;
     
-    FD_ZERO(&readfds);
-    FD_SET(state.socket_fd, &readfds);
-    timeout.tv_sec = 320; // 5+ minute timeout for slow AI
-    timeout.tv_usec = 0;
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(state.socket_fd, &readfds);
+        timeout.tv_sec = 5;  // 5 second intervals for dots
+        timeout.tv_usec = 0;
+        
+        int select_result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+        
+        if (select_result > 0) {
+            // Data available - break out to read response
+            break;
+        } else if (select_result == 0) {
+            // Timeout - show thinking dot
+            printf(".");
+            fflush(stdout);
+            dots_shown++;
+            
+            // Stop after 64 dots (5+ minutes)
+            if (dots_shown >= 64) {
+                printf("\nBackend timeout - no response\n");
+                return;
+            }
+        } else {
+            perror("select failed");
+            return;
+        }
+    }
     
-    int select_result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+    // Clear dots line if any were shown
+    if (dots_shown > 0) {
+        printf("\n");
+    }
+    
+    int select_result = 1; // We know data is available
     if (select_result > 0) {
         char response[MAX_RESPONSE_LEN];
         ssize_t bytes = recv(state.socket_fd, response, sizeof(response) - 1, 0);

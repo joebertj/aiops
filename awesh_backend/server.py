@@ -109,7 +109,7 @@ class AweshSocketBackend:
             debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
-    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
+    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None, client_socket=None) -> str:
         """Handle AI prompt and return response"""
         if not self.ai_ready:
             # AI not ready - if this was a bash failure, show the bash output
