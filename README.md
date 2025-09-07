@@ -129,17 +129,17 @@ VERBOSE=0
 
 **🎛️ Control Commands:**
 ```bash
-# Help (awe help)
+# Help & Status
 aweh            # Show all available awesh control commands
-awes            # Show API provider and model status
+awes            # Show verbose status (API provider, model, debug state)
+awea            # Show current AI provider and model
 
-# Verbose Debug Toggle (awe verbose)
+# Verbose Debug Control
+awev            # Show debug logging status
 awev on         # Enable debug logging
-awev off        # Disable debug logging  
-awev status     # Show current verbose state
-awev            # Same as 'awev on'
+awev off        # Disable debug logging
 
-# AI Provider Switching (awe ai)
+# AI Provider Switching
 awea openai     # Switch to OpenAI (GPT models)
 awea openrouter # Switch to OpenRouter (multiple providers)
 ```
