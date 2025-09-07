@@ -38,11 +38,13 @@ class AweshSocketBackend:
     async def initialize(self):
         """Initialize AI components"""
         try:
-            print("Backend: Initializing AI client...", file=sys.stderr)
+            if VERBOSE:
+                print("🤖 Backend: Initializing AI client...", file=sys.stderr)
             self.ai_client = AweshAIClient(self.config)
             await self.ai_client.initialize()
             self.ai_ready = True
-            print("Backend: AI client ready!", file=sys.stderr)
+            if VERBOSE:
+                print("✅ Backend: AI client ready!", file=sys.stderr)
             
             self.bash_executor = BashExecutor(".")
             
@@ -265,11 +267,13 @@ This allows the system to execute them automatically."""
                 except ConnectionResetError:
                     break
                 except Exception as e:
-                    print(f"Command processing error: {e}", file=sys.stderr)
+                    if VERBOSE:
+                        print(f"❌ Command processing error: {e}", file=sys.stderr)
                     break
                 
         except Exception as e:
-            print(f"Client handler error: {e}", file=sys.stderr)
+            if VERBOSE:
+                print(f"💥 Client handler error: {e}", file=sys.stderr)
         finally:
             client_socket.close()
     
@@ -286,7 +290,8 @@ This allows the system to execute them automatically."""
         self.socket.bind(SOCKET_PATH)
         self.socket.listen(1)
         
-        print(f"Backend: Listening on {SOCKET_PATH}", file=sys.stderr)
+        if VERBOSE:
+            print(f"🔧 Backend: Listening on {SOCKET_PATH}", file=sys.stderr)
         
         # Start AI initialization in background
         asyncio.create_task(self.initialize())
@@ -299,13 +304,15 @@ This allows the system to execute them automatically."""
         while True:
             try:
                 client_socket, _ = await loop.sock_accept(self.socket)
-                print("Backend: Client connected", file=sys.stderr)
+                if VERBOSE:
+                    print("🔌 Backend: Client connected", file=sys.stderr)
                 
                 # Handle client in background
                 asyncio.create_task(self.handle_client(client_socket))
                 
             except Exception as e:
-                print(f"Server error: {e}", file=sys.stderr)
+                if VERBOSE:
+                    print(f"🚨 Server error: {e}", file=sys.stderr)
                 break
     
     def cleanup(self):
