@@ -58,14 +58,13 @@ class AweshShell:
                 if not line.strip():
                     continue
                     
-                # Smart routing: always try bash first, then AI validation
+                # Process ALL commands in background threads for instant prompt
                 if self.router.is_builtin_command(line):
-                    # Built-ins always execute immediately
-                    self._handle_builtin(line)
-                    self.last_command = line
+                    # Built-ins in background thread too for consistency
+                    threading.Thread(target=self._handle_builtin_threaded, args=(line,), daemon=True).start()
                 else:
-                    # Try bash first (silently), then smart routing
-                    self._smart_route_command(line)
+                    # All other commands in background thread
+                    threading.Thread(target=self._smart_route_command, args=(line,), daemon=True).start()
                     
             except KeyboardInterrupt:
                 print()  # New line after ^C
@@ -102,6 +101,11 @@ class AweshShell:
                         print(f"awesh: cd: {new_dir}: No such file or directory", file=sys.stderr)
                 except PermissionError:
                     print(f"awesh: cd: {new_dir}: Permission denied", file=sys.stderr)
+    
+    def _handle_builtin_threaded(self, line: str):
+        """Handle builtin commands in thread"""
+        self._handle_builtin(line)
+        self.last_command = line
                 
     def _handle_bash_command(self, command: str):
         """Handle bash command execution"""
@@ -178,9 +182,9 @@ class AweshShell:
             self.last_command = line
         else:
             # Command failed and might be a natural language prompt
-            # Ask AI to validate
-            if self._ai_thinks_its_bash(line):
-                # AI says it's a real bash command that just failed
+            # Use simple heuristics first for speed
+            if self._quick_bash_check(line):
+                # Looks like a bash command that just failed
                 if stdout:
                     print(stdout, end='')
                 if stderr:
@@ -188,7 +192,7 @@ class AweshShell:
                 self.last_exit_code = exit_code
                 self.last_command = line
             else:
-                # AI says it's not a bash command - treat as prompt
+                # Looks like natural language - treat as prompt
                 self._handle_ai_prompt(line)
     
     def _looks_like_bash_command(self, line: str) -> bool:
@@ -197,23 +201,51 @@ class AweshShell:
         bash_indicators = ['|', '>', '>>', '<', '&&', '||', ';', '$', '`']
         return any(indicator in line for indicator in bash_indicators)
     
-    def _ai_thinks_its_bash(self, line: str) -> bool:
-        """Ask AI if this looks like a bash command (quick validation)"""
-        try:
-            validation_prompt = f"Is this a valid bash/shell command? Answer only 'YES' or 'NO': {line}"
-            
-            async def quick_ai_check():
-                response_parts = []
-                async for chunk in self.ai_client.process_prompt(validation_prompt):
-                    response_parts.append(chunk)
-                return ''.join(response_parts).strip().upper()
-            
-            response = asyncio.run(quick_ai_check())
-            return response.startswith('YES')
-            
-        except Exception:
-            # If AI check fails, assume it's bash (safer default)
+    def _quick_bash_check(self, line: str) -> bool:
+        """Fast heuristic check if line looks like a bash command"""
+        line = line.strip().lower()
+        
+        # If it has obvious bash syntax, it's probably bash
+        if self._looks_like_bash_command(line):
             return True
+            
+        # Check for common command patterns
+        words = line.split()
+        if not words:
+            return False
+            
+        first_word = words[0]
+        
+        # Common command patterns that might not be in PATH but are bash-like
+        bash_patterns = [
+            # Commands that commonly fail
+            'lss', 'lsl', 'sl',  # common typos of ls
+            'cta', 'catl',       # common typos of cat  
+            'grpe', 'gerp',      # common typos of grep
+            'mkdri', 'mdkir',    # common typos of mkdir
+            'chmdo', 'chomd',    # common typos of chmod
+        ]
+        
+        # If it's a common typo, treat as bash
+        if first_word in bash_patterns:
+            return True
+            
+        # If it starts with typical bash prefixes
+        bash_prefixes = ['sudo', 'time', 'nice', 'nohup', './']
+        if any(first_word.startswith(prefix) for prefix in bash_prefixes):
+            return True
+            
+        # If it looks like a question or natural language
+        question_words = ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'can', 'should', 'would', 'could']
+        if first_word in question_words:
+            return False
+            
+        # If it has multiple words and looks conversational
+        if len(words) > 3 and any(word in ['the', 'this', 'that', 'these', 'those', 'a', 'an'] for word in words):
+            return False
+            
+        # Default: if it's a single word or short phrase, assume it's a bash command attempt
+        return len(words) <= 2
             
     def _initialize_ai_thread(self):
         """Initialize AI client in background thread"""
