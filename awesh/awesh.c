@@ -134,6 +134,11 @@ void send_command(const char* cmd) {
         } else {
             printf("%s", response);
         }
+        
+        // Check AI status after command (efficient - we're already communicating)
+        if (state.ai_status == AI_LOADING) {
+            check_ai_status();
+        }
     }
 }
 
@@ -176,11 +181,6 @@ int main() {
     char prompt[64];
     
     while (1) {
-        // Check AI status periodically
-        if (state.ai_status == AI_LOADING) {
-            check_ai_status();
-        }
-        
         // Dynamic prompt based on AI status
         switch (state.ai_status) {
             case AI_LOADING:
