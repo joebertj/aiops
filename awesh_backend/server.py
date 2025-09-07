@@ -14,7 +14,8 @@ from .config import Config
 from .ai_client import AweshAIClient
 from .bash_executor import BashExecutor
 
-SOCKET_PATH = "/tmp/awesh.sock"
+import os
+SOCKET_PATH = os.path.expanduser("~/.awesh.sock")
 
 class AweshSocketBackend:
     """Socket-based backend for C frontend"""

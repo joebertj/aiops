@@ -7,12 +7,22 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <signal.h>
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
-#define SOCKET_PATH "/tmp/awesh.sock"
+static char socket_path[512];
+
+void init_socket_path() {
+    const char* home = getenv("HOME");
+    if (home) {
+        snprintf(socket_path, sizeof(socket_path), "%s/.awesh.sock", home);
+    } else {
+        strcpy(socket_path, "/tmp/awesh.sock");  // fallback
+    }
+}
 #define MAX_CMD_LEN 4096
 #define MAX_RESPONSE_LEN 65536
 
@@ -71,14 +81,17 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
         kill(state.backend_pid, SIGTERM);
         waitpid(state.backend_pid, NULL, 0);
     }
-    unlink(SOCKET_PATH);
+    unlink(socket_path);
     printf("\nGoodbye!\n");
     exit(0);
 }
 
 int start_backend() {
+    // Initialize socket path
+    init_socket_path();
+    
     // Remove existing socket
-    unlink(SOCKET_PATH);
+    unlink(socket_path);
     
     // Fork backend process
     state.backend_pid = fork();
@@ -105,7 +118,7 @@ int start_backend() {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
     
     if (connect(state.socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("Failed to connect to backend");
@@ -152,28 +165,47 @@ void send_command(const char* cmd) {
         return;
     }
     
-    // Read response
-    char response[MAX_RESPONSE_LEN];
-    ssize_t bytes = recv(state.socket_fd, response, sizeof(response) - 1, 0);
-    if (bytes > 0) {
-        response[bytes] = '\0';
-        
-        // Check if backend wants us to handle interactive command
-        if (strncmp(response, "INTERACTIVE:", 12) == 0) {
-            const char* interactive_cmd = response + 12;
-            // Remove trailing newline
-            char* newline = strchr(interactive_cmd, '\n');
-            if (newline) *newline = '\0';
+    // Read response with timeout
+    fd_set readfds;
+    struct timeval timeout;
+    
+    FD_ZERO(&readfds);
+    FD_SET(state.socket_fd, &readfds);
+    timeout.tv_sec = 30;  // 30 second timeout
+    timeout.tv_usec = 0;
+    
+    int select_result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+    if (select_result > 0) {
+        char response[MAX_RESPONSE_LEN];
+        ssize_t bytes = recv(state.socket_fd, response, sizeof(response) - 1, 0);
+        if (bytes > 0) {
+            response[bytes] = '\0';
             
-            system(interactive_cmd);
+            // Check if backend wants us to handle interactive command
+            if (strncmp(response, "INTERACTIVE:", 12) == 0) {
+                const char* interactive_cmd = response + 12;
+                // Remove trailing newline
+                char* newline = strchr(interactive_cmd, '\n');
+                if (newline) *newline = '\0';
+                
+                system(interactive_cmd);
+            } else {
+                printf("%s", response);
+            }
+            
+            // Check AI status after command (efficient - we're already communicating)
+            if (state.ai_status == AI_LOADING) {
+                check_ai_status();
+            }
+        } else if (bytes == 0) {
+            printf("Backend disconnected\n");
         } else {
-            printf("%s", response);
+            perror("recv failed");
         }
-        
-        // Check AI status after command (efficient - we're already communicating)
-        if (state.ai_status == AI_LOADING) {
-            check_ai_status();
-        }
+    } else if (select_result == 0) {
+        printf("Backend timeout - no response\n");
+    } else {
+        perror("select failed");
     }
 }
 
