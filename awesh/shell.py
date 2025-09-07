@@ -22,42 +22,41 @@ except ImportError:
 
 
 class AweshShell:
-    """Main awesh shell implementation"""
+    """Frontend: Just shows messages, waits for input, shows output"""
     
     def __init__(self, config: Config):
         self.config = config
-        self.router = CommandRouter()
         self.current_dir = Path.cwd()
         self.running = True
-        self.bash_executor = BashExecutor(str(self.current_dir))
         self.last_exit_code = 0
-        self.ai_client = AweshAIClient(config)
         self.last_command = None
-        self.ai_ready = False
-        self.ai_init_message_shown = False
+        
+        # Backend status - starts as down
+        self.backend_ready = False
+        
+        # Start backend in parallel - don't wait for it
+        self.backend = AweshBackend(config)
+        threading.Thread(target=self._start_backend, daemon=True).start()
         
     def run(self):
-        """Main shell loop - instant like bash"""
-        # Show MOTD and prompt immediately - no waiting
+        """Frontend: Show messages, wait for input, show output"""
+        # Show MOTD immediately
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Model: {self.config.model}")
         print()
         
-        # Start loading heavy AI libraries in background
-        threading.Thread(target=self._load_ai_libraries_background, daemon=True).start()
-        
-        # Simple shell loop - instant prompt
+        # Simple frontend loop - instant
         while self.running:
             try:
-                # Show prompt immediately - no delays
+                # Show prompt immediately
                 print(self.config.prompt_label, end='', flush=True)
                 line = input()
                 
                 if not line.strip():
                     continue
                 
-                # Process command in background to keep prompt instant
-                threading.Thread(target=self._process_command, args=(line,), daemon=True).start()
+                # Process command - frontend logic only
+                self._handle_command(line)
                     
             except KeyboardInterrupt:
                 print()
@@ -67,20 +66,30 @@ class AweshShell:
         
         print("Goodbye!")
     
-    def _process_command(self, line: str):
-        """Process any command in background thread"""
-        # Handle builtins
-        if self.router.is_builtin_command(line):
+    def _start_backend(self):
+        """Start backend in parallel"""
+        self.backend.start()
+        self.backend_ready = True
+        print("✅ AI backend ready!")
+    
+    def _handle_command(self, line: str):
+        """Frontend command handling - instant decisions"""
+        # Handle builtins immediately (frontend)
+        if self._is_builtin(line):
             self._handle_builtin(line)
             return
         
-        # Route everything else
-        destination, cleaned_line = self.router.route_command(line)
+        # Backend down? Redirect everything to bash
+        if not self.backend_ready:
+            self._execute_bash_direct(line)
+            return
         
-        if destination == 'bash':
-            self._handle_bash_command(cleaned_line)
-        else:  # AI
-            self._handle_ai_prompt(cleaned_line)
+        # Backend up? Send to backend with rules
+        self.backend.process_command(line)
+    
+    def _is_builtin(self, line: str) -> bool:
+        """Quick builtin check"""
+        return line.strip().split()[0] in ['cd', 'pwd', 'exit'] if line.strip() else False
                 
     def _handle_builtin(self, command: str):
         """Handle awesh builtin commands"""
@@ -110,6 +119,23 @@ class AweshShell:
                         print(f"awesh: cd: {new_dir}: No such file or directory", file=sys.stderr)
                 except PermissionError:
                     print(f"awesh: cd: {new_dir}: Permission denied", file=sys.stderr)
+    
+    def _execute_bash_direct(self, line: str):
+        """Execute bash directly (frontend fallback)"""
+        import subprocess
+        try:
+            result = subprocess.run(
+                line, shell=True, capture_output=True, text=True,
+                cwd=str(self.current_dir), timeout=30
+            )
+            if result.stdout:
+                print(result.stdout, end='')
+            if result.stderr:
+                print(result.stderr, end='', file=sys.stderr)
+            self.last_exit_code = result.returncode
+            self.last_command = line
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
     
     def _looks_obviously_like_bash(self, line: str) -> bool:
         """Ultra-fast bash detection - only obvious cases"""
@@ -321,5 +347,86 @@ class AweshShell:
             
     async def cleanup(self):
         """Clean up resources"""
+        if hasattr(self, 'backend'):
+            await self.backend.cleanup()
+
+
+class AweshBackend:
+    """Backend: Loads AI libraries and handles smart routing"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.router = CommandRouter()
+        self.bash_executor = BashExecutor(".")
+        self.ai_client = None
+        self.ai_ready = False
+    
+    def start(self):
+        """Start backend - load heavy libraries"""
+        try:
+            # Load heavy AI libraries
+            global openai, AsyncOpenAI
+            import openai
+            from openai import AsyncOpenAI
+            
+            # Initialize AI client
+            self.ai_client = AweshAIClient(self.config)
+            asyncio.run(self.ai_client.initialize())
+            self.ai_ready = True
+        except Exception as e:
+            print(f"⚠️  Backend AI failed: {e}")
+    
+    def process_command(self, line: str):
+        """Backend command processing with smart routing"""
+        # Follow the rules: try bash first, then AI validation
+        threading.Thread(target=self._smart_route, args=(line,), daemon=True).start()
+    
+    def _smart_route(self, line: str):
+        """Smart routing: bash first, then AI if available"""
+        # Always try bash first (silently)
+        exit_code, stdout, stderr = asyncio.run(self.bash_executor.execute(line))
+        
+        # If bash succeeded or AI not ready, show bash output
+        if exit_code == 0 or not self.ai_ready:
+            if stdout:
+                print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
+            return
+        
+        # Bash failed and AI ready - use simple heuristics
+        if self._looks_like_bash_command(line):
+            # Show bash error
+            if stdout:
+                print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
+        else:
+            # Treat as AI prompt
+            self._handle_ai_prompt(line)
+    
+    def _looks_like_bash_command(self, line: str) -> bool:
+        """Quick bash detection"""
+        return any(char in line for char in '|><;&$`') or \
+               line.strip().split()[0].lower() in {'ls', 'cat', 'grep', 'find', 'mkdir', 'rm'}
+    
+    def _handle_ai_prompt(self, prompt: str):
+        """Handle AI prompt"""
+        if not self.ai_ready:
+            print("🔄 AI still loading...")
+            return
+        
+        try:
+            print("🤖 ", end="", flush=True)
+            async def process():
+                async for chunk in self.ai_client.process_prompt(prompt):
+                    print(chunk, end="", flush=True)
+                print()
+            asyncio.run(process())
+        except Exception as e:
+            print(f"\n❌ AI error: {e}")
+    
+    async def cleanup(self):
+        """Cleanup backend"""
         if self.ai_client:
             await self.ai_client.close()
