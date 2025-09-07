@@ -421,6 +421,41 @@ def install_deploy(skip_tests=False):
     log("\n🎉 Production install completed successfully!")
     return True
 
+def clean_install():
+    """Clean Install: Build + Deploy (no git operations)"""
+    log("🚀 Starting clean install pipeline...")
+    
+    # Step 1: Syntax check
+    log("\n📋 Step 1: Syntax Check")
+    if not syntax_check():
+        log("❌ Clean install aborted due to syntax errors")
+        return False
+    
+    # Step 2: Kill existing processes
+    log("\n🛑 Step 2: Kill Existing Processes")
+    kill_processes(force=False)
+    
+    # Step 3: Build binaries
+    log("\n🔨 Step 3: Build Binaries")
+    if not build_project(clean=True):
+        log("❌ Clean install aborted due to build errors")
+        return False
+    
+    # Step 4: Deploy
+    log("\n📦 Step 4: Deploy")
+    if not deploy_binary(backup=True):
+        log("❌ Clean install failed")
+        return False
+    
+    # Step 5: Git commit and push
+    log("\n📝 Step 5: Git Commit & Push")
+    if not git_commit_and_push():
+        log("❌ Git operations failed")
+        return False
+    
+    log("\n🎉 Clean install completed successfully!")
+    return True
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
@@ -428,6 +463,7 @@ def main():
         log("\nCI/CD Commands:")
         log("  build          - CI pipeline: checks, bins, git push")
         log("  install        - Deploy pipeline: git pull, skip build, kills procs, copies")
+        log("  clean_install  - Build + deploy + git push (no git pull)")
         log("\nIndividual Commands:")
         log("  syntax_check   - Check C and Python syntax")
         log("  build_only     - Build awesh (incremental)")
@@ -447,6 +483,8 @@ def main():
         build_ci(skip_tests=False)
     elif command == "install":
         install_deploy(skip_tests=False)
+    elif command == "clean_install":
+        clean_install()
     
     # Individual Commands
     elif command == "syntax_check":
