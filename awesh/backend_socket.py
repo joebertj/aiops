@@ -94,7 +94,17 @@ class AweshSocketBackend:
     async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
         """Handle AI prompt and return response"""
         if not self.ai_ready:
-            return "🔄 AI still loading...\n"
+            # AI not ready - if this was a bash failure, show the bash output
+            if bash_result:
+                result = ""
+                if bash_result.get("stdout"):
+                    result += bash_result["stdout"]
+                if bash_result.get("stderr"):
+                    result += bash_result["stderr"]
+                return result
+            else:
+                # Pure AI prompt but AI not ready - silent failure
+                return ""
         
         try:
             # Give AI full context
