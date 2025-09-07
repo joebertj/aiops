@@ -216,8 +216,8 @@ This allows the system to execute them automatically."""
                 
                 debug_log(f"Command result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
                 
-                # Check if command succeeded (exit_code=0 and no stderr)
-                if exit_code == 0 and not stderr:
+                # Check if command succeeded (exit_code=0 OR has stdout)
+                if exit_code == 0 or stdout:
                     debug_log(f"Command succeeded: {command}")
                     return stdout if stdout else "Command executed successfully (no output)\n"
                 else:
@@ -398,8 +398,8 @@ awesh: <command>"""
                 
                 debug_log(f"📊 Command {command_number} result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
                 
-                # Check if command succeeded (exit_code=0 and no stderr)
-                if exit_code == 0 and not stderr:
+                # Check if command succeeded (exit_code=0 OR has stdout)
+                if exit_code == 0 or stdout:
                     debug_log(f"🎉 JACKPOT! Command {command_number} in option {option_number} succeeded: {command}")
                     debug_log(f"✨ First try success - option {option_number}, command {command_number} worked perfectly!")
                     return stdout if stdout else "Command executed successfully (no output)\n"
