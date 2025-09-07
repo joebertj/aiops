@@ -126,6 +126,7 @@ VERBOSE=0
 ```bash
 # Help (awe help)
 aweh            # Show all available awesh control commands
+awes            # Show API provider and model status
 
 # Verbose Debug Toggle (awe verbose)
 awev on         # Enable debug logging

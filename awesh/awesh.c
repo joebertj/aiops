@@ -294,6 +294,7 @@ void send_command(const char* cmd) {
 
 int is_awesh_command(const char* cmd) {
     return (strcmp(cmd, "aweh") == 0 ||
+            strcmp(cmd, "awes") == 0 ||
             strcmp(cmd, "awev") == 0 ||
             strcmp(cmd, "awev on") == 0 ||
             strcmp(cmd, "awev off") == 0 ||
@@ -313,6 +314,7 @@ void handle_awesh_command(const char* cmd) {
         printf("🎛️  Awesh Control Commands:\n");
         printf("\n📋 Help:\n");
         printf("  aweh              Show this help\n");
+        printf("  awes              Show API provider and model status\n");
         printf("\n🔧 Verbose Debug:\n");
         printf("  awev [on]         Enable debug logging\n");
         printf("  awev off          Disable debug logging\n");
@@ -321,6 +323,18 @@ void handle_awesh_command(const char* cmd) {
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
+    } else if (strcmp(cmd, "awes") == 0) {
+        const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+        const char* model = NULL;
+        
+        if (strcmp(ai_provider, "openrouter") == 0) {
+            model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
+        } else {
+            model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
+        }
+        
+        printf("🤖 API Provider: %s\n", ai_provider);
+        printf("📋 Model: %s\n", model);
     } else if (strcmp(cmd, "awev") == 0 || strcmp(cmd, "awev on") == 0) {
         update_config_file("VERBOSE", "1");
         send_command("VERBOSE:1");
@@ -371,18 +385,6 @@ int main() {
     
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
-    
-    // Show API provider and model info
-    const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-    const char* model = NULL;
-    
-    if (strcmp(ai_provider, "openrouter") == 0) {
-        model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
-    } else {
-        model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
-    }
-    
-    printf("🤖 API: %s | Model: %s\n", ai_provider, model);
     printf("💡 Type 'aweh' to see available control commands\n\n");
     
     if (start_backend() != 0) {
