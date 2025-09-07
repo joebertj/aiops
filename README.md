@@ -371,7 +371,7 @@ Advanced deployment orchestration with natural language controls for CI/CD pipel
 
 ---
 
-#### 🧪 **Test Suite MCP Server** *(Coming Soon)*
+#### 🧪 **Test Suite MCP Server** *(Development Paused)*
 *Intelligent test execution and quality assurance automation*
 
 Comprehensive testing automation with AI-driven test selection, execution, and result analysis for continuous quality assurance.
@@ -383,7 +383,10 @@ Comprehensive testing automation with AI-driven test selection, execution, and r
 - **Result Intelligence**: AI-powered failure analysis and debugging suggestions
 - **Coverage Analysis**: Gap identification and test recommendation
 
-*Will be copied from `~/AI/kubernetes_web` test automation framework*
+**⚠️ Development Status:**
+Development of this MCP server has been paused due to Cursor IDE limitations. The IDE's background AI prompts interfere with the strict rule adherence required for safety-critical testing scenarios. The Tester AI violates custom constraints we set, making it impossible to implement reliable test automation logic.
+
+*Will be implemented in external development environment and copied from `~/AI/kubernetes_web` test automation framework once completed.*
 
 ---
 
@@ -408,6 +411,33 @@ The AIOps MCP framework provides:
 - **🔄 Hot Reloading**: Development-friendly server restart and configuration updates
 - **📊 Performance Profiling**: Built-in metrics and performance analysis tools
 
+## ⚠️ Development Constraints & Limitations
+
+### Cursor IDE Limitations
+
+During development of the Test Suite MCP, we encountered significant limitations with Cursor IDE that prevented proper implementation:
+
+**🚫 Opinionated Background Prompts**
+- Cursor introduces its own AI prompts and rules in the background without user control
+- These background prompts conflict with our custom test suite logic and safety rules
+- The "Tester AI" violates the specific rules and constraints we set for our MCP servers
+- This makes it impossible to implement domain-specific AI behavior that contradicts Cursor's opinions
+
+**📋 Specific Symptoms:**
+- Our Test Suite MCP requires strict rule adherence for safety-critical testing scenarios
+- Cursor's background AI overrides our custom prompts and behavioral constraints
+- The AI assistant ignores project-specific rules in favor of Cursor's generic guidelines
+- Custom AI workflows get corrupted by Cursor's opinionated intervention
+
+**🔧 Workaround:**
+- Test Suite MCP implementation moved to external development environment
+- MCP servers developed outside Cursor maintain proper rule compliance
+- Integration testing performed in clean environments without IDE interference
+
+This limitation highlights the importance of AI development tools that respect user-defined constraints rather than imposing their own opinionated behaviors on specialized AI applications.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions that advance AI-powered operations:
@@ -416,6 +446,8 @@ We welcome contributions that advance AI-powered operations:
 - **Enhanced NLP**: Improve natural language understanding
 - **Safety Features**: Better guardrails and validation
 - **Documentation**: Help others adopt AIOps practices
+
+**Note:** When contributing MCP servers with custom AI behavior, consider developing in environments that don't impose background AI constraints that could interfere with your specific use cases.
 
 ## 📄 License
 
