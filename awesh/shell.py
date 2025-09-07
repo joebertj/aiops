@@ -108,7 +108,6 @@ class AweshShell:
                     msg = ready_msg.strip()
                     if msg == "READY":
                         self.backend_ready = True
-                        print("🔄 Backend process started...")
                     elif msg == "AI_LOADING":
                         print("🔄 Loading AI models...")
                     elif msg == "AI_READY":

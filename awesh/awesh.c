@@ -181,18 +181,8 @@ int main() {
     char prompt[64];
     
     while (1) {
-        // Dynamic prompt based on AI status
-        switch (state.ai_status) {
-            case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
-                break;
-            case AI_READY:
-                snprintf(prompt, sizeof(prompt), "AI ready: awesh> ");
-                break;
-            case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "awesh> ");
-                break;
-        }
+        // Clean prompt - no AI status clutter
+        snprintf(prompt, sizeof(prompt), "awesh> ");
         
         // Get input with readline (supports history, editing)
         line = readline(prompt);
