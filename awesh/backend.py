@@ -31,6 +31,10 @@ class AweshBackend:
     async def initialize(self):
         """Initialize heavy AI components"""
         try:
+            # Send loading signal
+            sys.stdout.write("AI_LOADING\n")
+            sys.stdout.flush()
+            
             # Initialize AI client
             self.ai_client = AweshAIClient(self.config)
             await self.ai_client.initialize()
@@ -44,6 +48,9 @@ class AweshBackend:
             sys.stdout.flush()
             
         except Exception as e:
+            # Send failure signal
+            sys.stdout.write("AI_FAILED\n")
+            sys.stdout.flush()
             print(f"Backend init error: {e}", file=sys.stderr)
     
     async def process_command(self, command: str) -> dict:
@@ -57,13 +64,17 @@ class AweshBackend:
                 if exit_code == 0 and stdout and not stderr:
                     return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                 
-                # Everything else goes to AI if ready (failures, stderr, empty output)
+                # Command failed - send to AI if ready
                 if self.ai_ready:
                     bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                     return await self._handle_ai_prompt(command, bash_result)
                 else:
-                    # AI not ready - show raw bash output
-                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                    # AI not ready - show bash output + hint
+                    return {
+                        "stdout": stdout, 
+                        "stderr": stderr + "💡 AI not ready yet - this might be a natural language query\n", 
+                        "exit_code": exit_code
+                    }
             else:
                 # No bash executor - AI handles everything
                 return await self._handle_ai_prompt(command)

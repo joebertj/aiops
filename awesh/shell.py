@@ -31,12 +31,13 @@ class AweshShell:
         self.running = True
         self.last_exit_code = 0
         self.last_command = None
-        
+
         # Backend subprocess communication
         self.backend_ready = False
+        self.ai_ready = False
         self.backend_socket = None
         self.backend_process = None
-        
+
         # Start backend subprocess - don't wait for it
         threading.Thread(target=self._start_backend_subprocess, daemon=True).start()
         
@@ -50,16 +51,20 @@ class AweshShell:
         # Simple frontend loop - instant
         while self.running:
             try:
-                # Show prompt immediately
-                print(self.config.prompt_label, end='', flush=True)
+                # Show prompt with AI status
+                if self.ai_ready:
+                    prompt = "awesh🤖> "
+                else:
+                    prompt = "awesh> "
+                print(prompt, end='', flush=True)
                 line = input()
-                
+
                 if not line.strip():
                     continue
-                
+
                 # Process command - frontend logic only
                 self._handle_command(line)
-                    
+
             except KeyboardInterrupt:
                 print()
                 continue
@@ -103,13 +108,20 @@ class AweshShell:
                     msg = ready_msg.strip()
                     if msg == "READY":
                         self.backend_ready = True
-                        print("🔄 AI backend starting...")
+                        print("🔄 Backend process started...")
+                    elif msg == "AI_LOADING":
+                        print("🔄 Loading AI models...")
                     elif msg == "AI_READY":
-                        print("✅ AI backend ready!")
+                        self.ai_ready = True
+                        print("✅ AI ready! Natural language queries now supported.")
+                        break
+                    elif msg == "AI_FAILED":
+                        self.ai_ready = False
+                        print("❌ AI initialization failed - bash-only mode")
                         break
                 else:
                     # Timeout
-                    print("⚠️  Backend initialization timeout")
+                    print("⚠️  Backend initialization timeout - bash-only mode")
                     break
         except Exception as e:
             print(f"⚠️  Backend ready check failed: {e}")
