@@ -501,8 +501,14 @@ int main() {
         if (is_awesh_command(line)) {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
+            if (state.verbose) {
+                fprintf(stderr, "DEBUG: Handling builtin command: %s\n", line);
+            }
             handle_builtin(line);
         } else {
+            if (state.verbose) {
+                fprintf(stderr, "DEBUG: Sending to backend: %s\n", line);
+            }
             send_command(line);
         }
         
