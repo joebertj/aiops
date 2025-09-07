@@ -1,21 +1,74 @@
-# Smart Kubernetes MCP Server
+# AIOps - AI-Powered Operations Toolkit
 
-A Model Context Protocol (MCP) server that converts natural language prompts directly to Kubernetes API calls, bypassing kubectl entirely.
+**Intelligent automation and management tools for modern infrastructure operations.**
 
-## 🚀 Features
+This project showcases AI-first approaches to operations, featuring **awesh** - an AI-aware interactive shell, and supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
 
-- **Natural Language Processing**: Convert plain English to Kubernetes operations
+## 🌟 Featured Components
+
+### 🐚 **awesh** - AI-Aware Interactive Shell
+*"AI by default, Bash when I mean Bash"*
+
+An intelligent shell that automatically routes commands between AI processing and Bash execution based on smart content detection. Perfect for operations teams who want natural language infrastructure management with the reliability of traditional shell commands.
+
+**Key Features:**
+- **Smart Routing**: Automatically detects whether input should go to AI or Bash
+- **Natural Language Operations**: Ask questions, get summaries, analyze systems
+- **Traditional Shell**: Full Bash compatibility for exact commands
+- **MCP Integration**: Secure tool execution through Model Context Protocol
+- **Streaming Responses**: Real-time AI output with full conversation context
+
+[📖 Learn more about awesh →](./awesh/)
+
+### ⚙️ **Kubernetes MCP Server** 
+*Direct natural language to Kubernetes API*
+
+A Model Context Protocol server that converts natural language prompts directly to Kubernetes API calls, bypassing kubectl entirely. Ideal for infrastructure automation and monitoring.
+
+**Key Features:**
+- **Natural Language Processing**: Convert plain English to Kubernetes operations  
 - **Direct API Calls**: Uses Kubernetes Python client for direct cluster communication
 - **Smart Intent Recognition**: Automatically detects what you want to do
 - **Rich Output**: Human-readable summaries with raw data
 - **Local Cluster Support**: Works with your local k3d/k3s cluster
 
-## 📁 Files
+## 🏗️ Project Structure
 
-- `smart_k8s_mcp.py` - Main MCP server with natural language processing
-- `interactive_client.py` - Interactive client for testing prompts
+```
+aiops/
+├── awesh/                  # AI-aware interactive shell (showcase)
+│   ├── main.py            # Shell entry point
+│   ├── router.py          # Command routing logic
+│   ├── config.py          # Configuration management
+│   └── specs.md           # Detailed specifications
+├── kubernetes/            # Kubernetes MCP server
+│   ├── smart_k8s_mcp.py  # Natural language K8s server
+│   └── interactive_client.py
+├── credential_store/      # Secure credential management
+├── executor/             # Command execution framework
+├── interaction/          # User interaction components  
+├── nlp/                  # Natural language processing
+├── planner/              # Task planning and orchestration
+└── state_store/          # State management
+```
 
-## 🛠️ Installation
+## 🚀 Quick Start
+
+### Install awesh (AI-aware Shell)
+
+```bash
+cd awesh/
+./install.sh
+```
+
+Or install manually:
+```bash
+cd awesh/
+pip install -e .
+awesh
+```
+
+### Try Kubernetes MCP Server
 
 1. **Install dependencies**:
    ```bash
@@ -27,15 +80,11 @@ A Model Context Protocol (MCP) server that converts natural language prompts dir
    kubectl cluster-info
    ```
 
-## 🎯 Usage
-
-### Interactive Mode (Recommended)
-
-Run the interactive client to test natural language prompts:
-
-```bash
-python3 interactive_client.py
-```
+3. **Run interactive mode**:
+   ```bash
+   cd kubernetes/
+   python3 interactive_client.py
+   ```
 
 **Example prompts you can try**:
 - "Show me the cluster health"
@@ -204,30 +253,60 @@ Your Kubernetes MCP server has access to the full Kubernetes API surface:
 - "List all storage classes"
 - "Show RBAC roles in kube-system"
 
-## 🔮 Future Enhancements
+## 🔮 AIOps Vision & Roadmap
 
-- [ ] Resource creation and management
-- [ ] Advanced filtering and search
-- [ ] Metrics and monitoring integration
-- [ ] Multi-cluster support
-- [ ] Custom resource definitions
-- [ ] RBAC and security analysis
-- [ ] Advanced deployment strategies (Blue/Green, Canary)
-- [ ] Deployment automation and CI/CD integration
+### Core Philosophy
+AIOps represents a paradigm shift from traditional infrastructure management to AI-first operations. The goal is to make infrastructure as conversational and intuitive as possible while maintaining the precision and reliability that operations teams require.
 
-## 📚 MCP Protocol
+### Planned Components
+- **🐚 awesh**: AI-aware shell (current showcase)
+- **☸️ Kubernetes MCP**: Natural language Kubernetes management (available)
+- **🔒 Security MCP**: AI-powered security analysis and remediation
+- **📊 Monitoring MCP**: Intelligent alerting and incident response
+- **🚀 CI/CD MCP**: Natural language deployment pipelines
+- **☁️ Cloud Provider MCPs**: AWS, GCP, Azure natural language management
+- **📈 Analytics Engine**: Cross-platform operational intelligence
 
-This server implements the Model Context Protocol (MCP) specification:
+### Technical Roadmap
+- [ ] **awesh v1.0**: Complete AI-aware shell with full MCP integration
+- [ ] **Multi-MCP Support**: Connect multiple MCP servers simultaneously  
+- [ ] **Advanced NLP**: Context-aware command interpretation
+- [ ] **Workflow Automation**: AI-generated operational runbooks
+- [ ] **Predictive Operations**: Proactive issue detection and resolution
+- [ ] **Team Collaboration**: Shared AI context and knowledge bases
 
-- **JSON-RPC 2.0** communication
-- **Standard MCP methods**: `initialize`, `tools/list`, `tools/call`
-- **Custom prompt handling**: `prompts/list`, `prompts/call`
-- **Structured content responses**
+## 🧠 AI-First Operations
+
+This project demonstrates several key principles:
+
+1. **Natural Language Interface**: Operations should be as easy as having a conversation
+2. **Context Awareness**: AI should understand your infrastructure and history
+3. **Safety by Design**: AI suggestions with human approval workflows
+4. **Gradual Adoption**: Works alongside existing tools and processes
+5. **Knowledge Sharing**: AI learns from team practices and tribal knowledge
+
+## 📚 Model Context Protocol (MCP)
+
+All AI integrations use the Model Context Protocol for secure, standardized tool execution:
+
+- **🔒 Security**: Strict policy enforcement and audit trails
+- **🔧 Extensibility**: Plugin architecture for new infrastructure platforms
+- **📊 Observability**: Full logging and monitoring of AI actions
+- **🤝 Interoperability**: Works with any MCP-compatible AI system
 
 ## 🤝 Contributing
 
-Feel free to extend the natural language processing capabilities or add new Kubernetes operations!
+We welcome contributions that advance AI-powered operations:
+
+- **New MCP Servers**: Add support for additional platforms
+- **Enhanced NLP**: Improve natural language understanding
+- **Safety Features**: Better guardrails and validation
+- **Documentation**: Help others adopt AIOps practices
 
 ## 📄 License
 
 This project is open source and available under the Apache License 2.0.
+
+---
+
+*AIOps: Where artificial intelligence meets infrastructure operations. Making the complex simple, the manual automatic, and the reactive proactive.*
