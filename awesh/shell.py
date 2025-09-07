@@ -35,7 +35,7 @@ class AweshShell:
         
     async def run(self):
         """Main shell loop"""
-        print(f"awesh v0.1.0")
+        print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Philosophy: 'AI by default, Bash when I mean Bash'")
         print(f"Model: {self.config.model}")
         print()
