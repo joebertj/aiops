@@ -120,10 +120,15 @@ Process this and respond appropriately."""
             # Collect response with timeout
             output = "🤖 "
             try:
-                # Add timeout to prevent hanging
-                async with asyncio.timeout(25):  # 25 second timeout
+                # Add timeout to prevent hanging (compatible with older Python)
+                async def collect_response():
+                    result = ""
                     async for chunk in self.ai_client.process_prompt(ai_input):
-                        output += chunk
+                        result += chunk
+                    return result
+                
+                response = await asyncio.wait_for(collect_response(), timeout=25)
+                output += response
                 output += "\n"
                 return output
             except asyncio.TimeoutError:
