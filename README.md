@@ -71,6 +71,17 @@ cd awesh/
 awesh
 ```
 
+**🔧 Configuration (`~/.aweshrc`):**
+```bash
+# OpenAI Configuration
+OPENAI_MODEL=gpt-5
+OPENAI_API_KEY=your_api_key_here
+
+# Display Options  
+SHOW_AI_STATUS=true    # Show AI status in prompt (default: true)
+VERBOSE=0              # Debug logging: 0=silent, 1=verbose (default: 0)
+```
+
 [📖 Learn more about awesh →](./awesh/)
 
 ### ⚙️ **Kubernetes MCP Server** 
@@ -340,6 +351,10 @@ python3 deployment_mcp.py build
 # Production Install Pipeline (Deployment)  
 # Git pull → Skip build → Kill procs → Copies
 python3 deployment_mcp.py install
+
+# Clean Install Pipeline (Development)
+# Checks → Kill procs → Build → Deploy → Git push (no git pull)
+python3 deployment_mcp.py clean_install
 ```
 
 #### Individual Operations
@@ -385,6 +400,15 @@ python3 deployment_mcp.py git_push   # Commit and push changes
 1. **📥 Git Pull**: Pull latest changes from repository
 2. **🛑 Kill Procs**: Terminates existing awesh processes
 3. **📦 Copies**: Install binary to `~/.local/bin` with backup
+
+#### Clean Install Pipeline (`clean_install`)
+*For development - build and deploy without git pull*
+
+1. **📋 Checks**: Validates all C and Python code syntax
+2. **🛑 Kill Procs**: Terminates existing awesh processes
+3. **🔨 Build**: Clean build of C frontend + Python backend installation
+4. **📦 Deploy**: Install binary to `~/.local/bin` with backup
+5. **📝 Git Push**: Commit changes and push to repository
 
 ### Example Output
 
