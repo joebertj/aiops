@@ -40,8 +40,8 @@ class AweshShell:
         # Show MOTD immediately
         print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell (AI-aware Interactive Shell)")
         print(f"Model: {self.config.model}")
-        print("🔄 AI client initializing in background...")
-        print(f"Type 'exit' to quit, or use Ctrl+C")
+        print("🔄 Loading AI client, please wait...", end="", flush=True)
+        print(f"\nType 'exit' to quit, or use Ctrl+C")
         print()
         
         # Start AI initialization in background (fire and forget)
@@ -155,11 +155,11 @@ class AweshShell:
         try:
             await self.ai_client.initialize()
             self.ai_ready = True
-            # Show ready message (will appear above next prompt)
-            print("✅ AI client ready!")
+            # Update the loading line
+            print("\r✅ AI client ready and loaded successfully!        ")
         except Exception as e:
-            print(f"⚠️  AI initialization failed: {e}")
-            print("   AI features will be disabled. Check your OPENAI_API_KEY in ~/.aweshrc")
+            print(f"\r⚠️  AI client failed to load: {e}")
+            print("   AI features disabled. Check OPENAI_API_KEY in ~/.aweshrc")
             
     async def cleanup(self):
         """Clean up resources"""
