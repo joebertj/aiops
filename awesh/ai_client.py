@@ -33,7 +33,7 @@ class AweshAIClient:
             
         self.client = AsyncOpenAI(api_key=api_key)
         
-        # Load system prompt
+        # Load system prompt (this can be slow if creating default)
         await self._load_system_prompt()
         
     async def _load_system_prompt(self):
@@ -48,9 +48,15 @@ class AweshAIClient:
                 print(f"Warning: Could not load system prompt from {prompt_file}: {e}")
                 self.system_prompt = self._get_default_system_prompt()
         else:
-            # Create default system prompt file
+            # Use default system prompt (don't block on file creation)
             self.system_prompt = self._get_default_system_prompt()
-            await self._create_default_system_prompt_file(prompt_file)
+            # Create file in background (non-blocking)
+            try:
+                prompt_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(prompt_file, 'w', encoding='utf-8') as f:
+                    f.write(self.system_prompt)
+            except Exception:
+                pass  # Don't block startup on file creation failure
             
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for awesh"""

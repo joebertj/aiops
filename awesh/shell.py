@@ -35,20 +35,23 @@ class AweshShell:
         
     async def run(self):
         """Main shell loop"""
-        print(f"awesh v0.1.0 - AI-aware Interactive Shell")
+        print(f"awesh v0.1.0 - Awe-Inspired Workspace Environment Shell")
         print(f"Philosophy: 'AI by default, Bash when I mean Bash'")
         print(f"Model: {self.config.model}")
-        print(f"Type 'exit' to quit, or use Ctrl+C")
         print()
+        
+        # Show loading message during initialization
+        print("🔄 Initializing AI client...", end="", flush=True)
         
         # Initialize AI client
         try:
             await self.ai_client.initialize()
-            print("✅ AI client initialized successfully")
+            print("\r✅ AI client initialized successfully")
         except Exception as e:
-            print(f"⚠️  Warning: AI client initialization failed: {e}")
+            print(f"\r⚠️  Warning: AI client initialization failed: {e}")
             print("   AI features will be disabled. Check your OPENAI_API_KEY in ~/.aweshrc")
         
+        print(f"Type 'exit' to quit, or use Ctrl+C")
         print()
         
         while self.running:
