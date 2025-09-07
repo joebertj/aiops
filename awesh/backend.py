@@ -47,20 +47,18 @@ class AweshBackend:
             print(f"Backend init error: {e}", file=sys.stderr)
     
     async def process_command(self, command: str) -> dict:
-        """Simple routing: bash first, then AI if bash fails"""
+        """AI-first routing: all bash output goes to AI when ready"""
         try:
             # Try bash first
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 
-                # Bash succeeded - return result
-                if exit_code == 0:
-                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
-                
-                # Bash failed - let AI handle it if ready
+                # If AI is ready, send ALL output to AI (success or failure)
                 if self.ai_ready:
-                    return await self._handle_ai_prompt(command, {"stdout": stdout, "stderr": stderr, "exit_code": exit_code})
+                    bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                    return await self._handle_ai_prompt(command, bash_result)
                 else:
+                    # AI not ready - show raw bash output
                     return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
             else:
                 # No bash executor - AI handles everything
@@ -70,15 +68,21 @@ class AweshBackend:
             return {"stdout": "", "stderr": f"Backend error: {e}\n", "exit_code": 1}
     
     
-    async def _handle_ai_prompt(self, prompt: str, bash_failed: dict = None) -> dict:
-        """Let AI handle everything - prompts, failed commands, suggestions"""
+    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> dict:
+        """Let AI process everything - all bash output goes through AI first"""
         if not self.ai_ready:
             return {"stdout": "🔄 AI still loading...\n", "stderr": "", "exit_code": 0}
         
         try:
-            # Give AI the context and let it decide what to do
-            if bash_failed:
-                ai_input = f"User typed: {prompt}\nBash failed with: {bash_failed.get('stderr', '')}\nHelp the user."
+            # Give AI full context: command + all bash output
+            if bash_result:
+                ai_input = f"""User command: {prompt}
+Bash result:
+- Exit code: {bash_result.get('exit_code', 0)}
+- Stdout: {bash_result.get('stdout', '')}
+- Stderr: {bash_result.get('stderr', '')}
+
+Process this and respond appropriately."""
             else:
                 ai_input = prompt
             
