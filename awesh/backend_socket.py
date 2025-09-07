@@ -64,21 +64,25 @@ class AweshSocketBackend:
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
                 
-                # Clean success - return output directly
+                # Clean success - return output directly (bypass AI)
                 if exit_code == 0 and stdout and not stderr:
                     return stdout
                 
-                # Command failed - let AI handle if ready
+                # Success but no output (like cd) - return empty
+                if exit_code == 0 and not stdout and not stderr:
+                    return ""
+                
+                # Command failed - let AI handle if ready, otherwise show bash output
                 if self.ai_ready:
                     bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                     return await self._handle_ai_prompt(command, bash_result)
                 else:
-                    # AI not ready - return bash output with hint
+                    # AI not ready - return bash output directly
                     result = ""
                     if stdout:
                         result += stdout
                     if stderr:
-                        result += stderr + "💡 AI not ready yet - this might be a natural language query\n"
+                        result += stderr
                     return result
             else:
                 # No bash executor - AI handles everything
