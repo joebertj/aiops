@@ -107,15 +107,16 @@ def kill_processes(force=False):
         # Find and kill awesh processes
         for proc in psutil.process_iter(['pid', 'name']):
             try:
-                if proc.info['name'] == 'awesh':
+                if proc.info['name'] in ['awesh', 'awesh_backend']:
                     pid = proc.info['pid']
+                    name = proc.info['name']
                     
                     if force:
                         os.kill(pid, signal.SIGKILL)
-                        log(f"💀 Force killed awesh (PID: {pid})")
+                        log(f"💀 Force killed {name} (PID: {pid})")
                     else:
                         os.kill(pid, signal.SIGTERM)
-                        log(f"🛑 Terminated awesh (PID: {pid})")
+                        log(f"🛑 Terminated {name} (PID: {pid})")
                     
                     killed_processes.append(pid)
             
