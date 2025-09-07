@@ -2,35 +2,35 @@
 
 **Intelligent automation and management tools for modern infrastructure operations.**
 
-This project showcases AI-first approaches to operations, featuring **awesh** - an AI-aware interactive shell that serves as a "free cursor" for shell-native AI assistance, plus supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
+This project showcases AI-first approaches to operations, featuring **awesh** - AIIS (AI-Aware Interactive Shell) that serves as a "free cursor" for shell-native AI assistance, plus supporting MCP (Model Context Protocol) servers for various infrastructure platforms.
 
 **💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 
 ## 🧠 Breaking the AI Stigma in Open Source
 
-**AI as Foundation + Human Creativity = Transcendent Tools**
+**AI is Baseline + Human Creativity = Breakthrough Tools**
 
-This project embraces AI's existing superiority as our foundation while breaking the stigma around AI use in open source. We believe:
+This project uses AI as the baseline, then pushes further with human creativity to achieve breakthroughs beyond what AI training alone provides. We believe:
 
-- **AI Has Superiority**: AI already excels in many areas - we use this strength as our starting point
-- **Human Creativity Transcends**: We add creative concepts that go beyond AI training data limitations
-- **AI is the Base, Not the Goal**: AI provides the superior foundation; human creativity is what makes tools truly innovative
-- **Beyond Training Data**: Human insight enforces new concepts that weren't in the AI's training
-- **Transparency Matters**: Being open about using AI's superiority while showcasing the human creativity that makes projects transcendent
+- **AI is Baseline**: AI provides the superior baseline capabilities we build upon
+- **Human Creativity Pushes Further**: We use human creativity to go beyond AI's training limitations
+- **Beyond Training Data**: Human creativity enforces new concepts that weren't in AI's training
+- **AI is Starting Point, Not End**: AI serves as our baseline; human creativity is what creates innovation
+- **Push Past Boundaries**: Human creativity pushes past what AI learned from training data
 
 **🎯 Our Approach:**
-- Start with AI's superior capabilities as the foundation
-- Layer human creativity to transcend training data boundaries
-- Create novel concepts and approaches that push beyond what AI learned
-- Build tools that solve problems in ways that go beyond AI's training limitations
+- Use AI as the superior baseline
+- Push further with human creativity beyond training patterns
+- Implement creative approaches that go beyond what AI learned
+- Create novel behaviors that training data couldn't anticipate
 
-**🌟 The Result:** Tools like awesh that represent transcendent innovation - using AI's superior capabilities as the foundation, then adding human creative concepts to create AI-aware shells that go beyond what any training data could have conceived.
+**🌟 The Result:** Tools like awesh that represent breakthrough innovation - using AI as the base layer, then implementing non-traditional techniques that contradict conventional training to create AI-aware shells with behaviors no training data could have anticipated.
 
-Open source thrives on innovation and collaboration. AI provides the superior base capabilities; human creativity is what transforms that foundation into truly groundbreaking tools.
+Open source thrives on experimentation and innovation. AI provides the base infrastructure; non-traditional, training-contradicting techniques are what create genuine breakthroughs.
 
 ## 🌟 Featured Components
 
-### 🐚 **awesh** - AI-Aware Interactive Shell
+### 🐚 **awesh** - AIWES (Awe-Inspired Workspace Environment Shell)
 *"AI by default, Bash when I mean Bash"*
 
 The flagship component of AIOps - an intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. Built for operations teams who want the power of conversational AI without losing the precision of shell commands.
@@ -107,7 +107,7 @@ aiops/
 
 ## 🚀 Quick Start
 
-### Install awesh (AI-aware Shell)
+### Install awesh - AIWES (Awe-Inspired Workspace Environment Shell)
 
 ```bash
 cd awesh/
@@ -311,7 +311,7 @@ Your Kubernetes MCP server has access to the full Kubernetes API surface:
 ### Core Philosophy
 AIOps represents a paradigm shift from traditional infrastructure management to AI-first operations. The goal is to make infrastructure as conversational and intuitive as possible while maintaining the precision and reliability that operations teams require.
 
-**AI Foundation + Human Innovation:** We leverage AI's existing superiority as our foundation, then use human creativity to transcend training data limitations and create truly groundbreaking solutions. AI provides the superior base; human creativity is what makes tools transcendent.
+**AI Base Layer + Experimental Innovation:** We leverage AI as our base infrastructure layer, then experiment with non-traditional, training-contradicting techniques to create breakthrough solutions. AI provides the foundational capabilities; experimental techniques that contradict training patterns are what create genuine innovation.
 
 ### Planned Components
 - **🐚 awesh**: AI-aware shell (current showcase)
