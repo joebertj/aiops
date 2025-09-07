@@ -399,7 +399,7 @@ def build_ci(skip_tests=False):
     return True
 
 def install_deploy(skip_tests=False):
-    """Production Install Pipeline: git pull, skip build, kills procs, copies"""
+    """Production Install Pipeline: git pull, build, kills procs, deploy"""
     log("🚀 Starting production install pipeline...")
     
     # Step 1: Git pull latest
@@ -412,8 +412,14 @@ def install_deploy(skip_tests=False):
     log("\n🛑 Step 2: Kill Existing Processes")
     kill_processes(force=False)
     
-    # Step 3: Copy/Deploy binaries (no build)
-    log("\n📦 Step 3: Copy Binaries")
+    # Step 3: Build binaries
+    log("\n🔨 Step 3: Build Binaries")
+    if not build_project(clean=True):
+        log("❌ Install aborted due to build errors")
+        return False
+    
+    # Step 4: Deploy binaries
+    log("\n📦 Step 4: Deploy Binaries")
     if not deploy_binary(backup=True):
         log("❌ Installation failed")
         return False
@@ -462,7 +468,7 @@ def main():
         log("Usage: python3 deployment_mcp.py [command]")
         log("\nCI/CD Commands:")
         log("  build          - CI pipeline: checks, bins, git push")
-        log("  install        - Deploy pipeline: git pull, skip build, kills procs, copies")
+        log("  install        - Deploy pipeline: git pull, build, kills procs, deploy")
         log("  clean_install  - Build + deploy + git push (no git pull)")
         log("\nIndividual Commands:")
         log("  syntax_check   - Check C and Python syntax")
