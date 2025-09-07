@@ -133,9 +133,17 @@ Bash result:
 - Stdout: {bash_result.get('stdout', '')}
 - Stderr: {bash_result.get('stderr', '')}
 
-Process this and respond appropriately."""
+Process this and respond appropriately. If you provide commands for the user to run, format them as:
+awesh: <command>
+
+This allows the system to execute them automatically."""
             else:
-                ai_input = prompt
+                ai_input = f"""{prompt}
+
+If you provide commands for the user to run, format them as:
+awesh: <command>
+
+This allows the system to execute them automatically."""
             
             # Collect response with timeout (compatible with older Python)
             output = "🤖 "
