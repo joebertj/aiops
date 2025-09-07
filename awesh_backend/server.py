@@ -160,7 +160,7 @@ This allows the system to execute them automatically."""
                     return result
                 
                 debug_log("Calling collect_response with timeout")
-                response = await asyncio.wait_for(collect_response(), timeout=25)
+                response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
                 output += response
                 output += "\n"

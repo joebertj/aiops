@@ -182,7 +182,7 @@ void send_command(const char* cmd) {
     
     FD_ZERO(&readfds);
     FD_SET(state.socket_fd, &readfds);
-    timeout.tv_sec = 30;  // 30 second timeout
+    timeout.tv_sec = 320; // 5+ minute timeout for slow AI
     timeout.tv_usec = 0;
     
     int select_result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
