@@ -48,6 +48,11 @@ class Config:
         if env_file.exists():
             load_dotenv(env_file)
         
+        # Load from ~/.aweshrc if it exists (simple key=value format)
+        aweshrc_path = Path.home() / '.aweshrc'
+        if aweshrc_path.exists():
+            load_dotenv(aweshrc_path)
+        
         # Override model from environment variable if set
         if os.getenv('OPENAI_MODEL'):
             config.model = os.getenv('OPENAI_MODEL')
