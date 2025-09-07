@@ -41,7 +41,7 @@ setup(
         "Topic :: System :: Shells",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires=">=3.11",
+    python_requires=">=3.10",
     install_requires=requirements,
     entry_points={
         "console_scripts": [

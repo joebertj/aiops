@@ -9,8 +9,12 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from .shell import AweshShell
-from .config import Config
+try:
+    from .shell import AweshShell
+    from .config import Config
+except ImportError:
+    from shell import AweshShell
+    from config import Config
 
 
 def create_parser():
@@ -74,7 +78,10 @@ async def main():
             
         # Initialize and run the shell
         shell = AweshShell(config)
-        await shell.run()
+        try:
+            await shell.run()
+        finally:
+            await shell.cleanup()
         
     except KeyboardInterrupt:
         print("\nGoodbye!")

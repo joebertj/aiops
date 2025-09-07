@@ -57,9 +57,22 @@ class Config:
             config.save(config_path)
             return config
             
-        # Parse configuration file
-        parser = configparser.ConfigParser()
-        parser.read(config_path)
+        # Try to parse configuration file
+        # First check if it's a simple key=value format or INI format
+        try:
+            with open(config_path, 'r') as f:
+                first_line = f.readline().strip()
+                
+            if first_line and '=' in first_line and not first_line.startswith('['):
+                # Simple key=value format - already loaded by dotenv above
+                return config
+            else:
+                # INI format - use configparser
+                parser = configparser.ConfigParser()
+                parser.read(config_path)
+        except Exception as e:
+            print(f"Warning: Could not read config file {config_path}: {e}")
+            return config
         
         # AI settings
         if parser.has_section('ai'):

@@ -8,7 +8,7 @@ echo "================================================"
 
 # Check Python version
 python_version=$(python3 --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
-required_version="3.11"
+required_version="3.10"
 
 if [ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]; then
     echo "❌ Error: Python $required_version or higher is required. Found: $python_version"

@@ -1,0 +1,9 @@
+README.md
+setup.py
+awesh.egg-info/PKG-INFO
+awesh.egg-info/SOURCES.txt
+awesh.egg-info/dependency_links.txt
+awesh.egg-info/entry_points.txt
+awesh.egg-info/not-zip-safe
+awesh.egg-info/requires.txt
+awesh.egg-info/top_level.txt
