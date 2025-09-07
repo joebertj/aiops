@@ -301,7 +301,6 @@ int is_awesh_command(const char* cmd) {
             strcmp(cmd, "awev") == 0 ||
             strcmp(cmd, "awev on") == 0 ||
             strcmp(cmd, "awev off") == 0 ||
-            strcmp(cmd, "awev status") == 0 ||
             strcmp(cmd, "awea openai") == 0 ||
             strcmp(cmd, "awea openrouter") == 0);
 }
@@ -317,11 +316,10 @@ void handle_awesh_command(const char* cmd) {
         printf("🎛️  Awesh Control Commands:\n");
         printf("\n📋 Help:\n");
         printf("  aweh              Show this help\n");
-        printf("  awes              Show API provider and model status\n");
+        printf("  awes              Show verbose status (API provider, model, debug state)\n");
         printf("\n🔧 Verbose Debug:\n");
         printf("  awev [on]         Enable debug logging\n");
         printf("  awev off          Disable debug logging\n");
-        printf("  awev status       Show verbose state\n");
         printf("\n🤖 AI Provider:\n");
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
@@ -336,16 +334,32 @@ void handle_awesh_command(const char* cmd) {
             model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
         }
         
+        // Verbose status - show everything
+        printf("🔍 Awesh Verbose Status:\n");
         printf("🤖 API Provider: %s\n", ai_provider);
         printf("📋 Model: %s\n", model);
+        printf("🔧 Debug Logging: %s\n", state.verbose ? "enabled" : "disabled");
+        printf("📡 AI Status: ");
+        switch (state.ai_status) {
+            case AI_LOADING:
+                printf("loading\n");
+                break;
+            case AI_READY:
+                printf("ready\n");
+                break;
+            case AI_FAILED:
+                printf("failed\n");
+                break;
+        }
+        printf("📊 Backend PID: %d\n", state.backend_pid);
+        printf("🔌 Socket FD: %d\n", state.socket_fd);
+        printf("👁️  Show AI Status: %s\n", state.show_ai_status ? "enabled" : "disabled");
     } else if (strcmp(cmd, "awev") == 0 || strcmp(cmd, "awev on") == 0) {
         update_config_file("VERBOSE", "1");
         send_command("VERBOSE:1");
     } else if (strcmp(cmd, "awev off") == 0) {
         update_config_file("VERBOSE", "0");
         send_command("VERBOSE:0");
-    } else if (strcmp(cmd, "awev status") == 0) {
-        send_command("VERBOSE:");
     } else if (strcmp(cmd, "awea openai") == 0) {
         update_config_file("AI_PROVIDER", "openai");
         send_command("AI_PROVIDER:openai");

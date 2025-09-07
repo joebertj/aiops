@@ -1,4 +1,3 @@
-README.md
 setup.py
 awesh.egg-info/PKG-INFO
 awesh.egg-info/SOURCES.txt

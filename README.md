@@ -122,6 +122,9 @@ SHOW_AI_STATUS=true
 VERBOSE=0
 ```
 
+**⚠️ Testing Status:**
+> **Currently optimized for OpenAI GPT-5**: awesh is actively tested and developed using OpenAI's GPT-5 model. While OpenRouter and other AI providers are supported, they may exhibit unexpected behavior or suboptimal performance. We recommend using OpenAI with GPT-5 for the most reliable experience while we continue testing and improving compatibility with other providers.
+
 **🎛️ Control Commands:**
 ```bash
 # Help (awe help)
