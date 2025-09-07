@@ -127,8 +127,15 @@ Process this and respond appropriately."""
                 if not command:
                     continue
                 
-                # Process command
-                response = await self.process_command(command)
+                # Handle status requests
+                if command == "STATUS":
+                    if self.ai_ready:
+                        response = "AI_READY"
+                    else:
+                        response = "AI_LOADING"
+                else:
+                    # Process regular command
+                    response = await self.process_command(command)
                 
                 # Send response
                 client_socket.send(response.encode('utf-8'))

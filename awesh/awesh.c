@@ -14,13 +14,19 @@
 #define MAX_CMD_LEN 4096
 #define MAX_RESPONSE_LEN 65536
 
+typedef enum {
+    AI_LOADING,
+    AI_READY,
+    AI_FAILED
+} ai_status_t;
+
 typedef struct {
     int backend_pid;
     int socket_fd;
-    int ai_ready;
+    ai_status_t ai_status;
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, 0};
+static awesh_state_t state = {0, -1, AI_LOADING};
 
 void cleanup_and_exit(int sig) {
     if (state.socket_fd >= 0) {
@@ -76,10 +82,28 @@ int start_backend() {
     return 0;
 }
 
+void check_ai_status() {
+    if (state.socket_fd < 0) return;
+    
+    // Send status check
+    if (send(state.socket_fd, "STATUS", 6, 0) < 0) return;
+    
+    // Read response
+    char response[64];
+    ssize_t bytes = recv(state.socket_fd, response, sizeof(response) - 1, 0);
+    if (bytes > 0) {
+        response[bytes] = '\0';
+        if (strncmp(response, "AI_READY", 8) == 0) {
+            state.ai_status = AI_READY;
+        } else if (strncmp(response, "AI_LOADING", 10) == 0) {
+            state.ai_status = AI_LOADING;
+        }
+    }
+}
+
 void send_command(const char* cmd) {
     if (state.socket_fd < 0) {
         // No backend - execute directly with system()
-        printf("Backend not available - executing directly\n");
         system(cmd);
         return;
     }
@@ -106,7 +130,6 @@ void send_command(const char* cmd) {
             char* newline = strchr(interactive_cmd, '\n');
             if (newline) *newline = '\0';
             
-            printf("Running interactive command: %s\n", interactive_cmd);
             system(interactive_cmd);
         } else {
             printf("%s", response);
@@ -141,14 +164,11 @@ int main() {
     signal(SIGINT, cleanup_and_exit);
     signal(SIGTERM, cleanup_and_exit);
     
-    // Start backend
-    printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
-    printf("Starting backend...\n");
+    // Start backend silently
+    printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n\n");
     
-    if (start_backend() == 0) {
-        printf("Backend connected!\n");
-    } else {
-        printf("Backend failed - bash-only mode\n");
+    if (start_backend() != 0) {
+        state.ai_status = AI_FAILED;
     }
     
     // Main shell loop
@@ -156,8 +176,23 @@ int main() {
     char prompt[64];
     
     while (1) {
+        // Check AI status periodically
+        if (state.ai_status == AI_LOADING) {
+            check_ai_status();
+        }
+        
         // Dynamic prompt based on AI status
-        snprintf(prompt, sizeof(prompt), "%s> ", state.ai_ready ? "awesh🤖" : "awesh");
+        switch (state.ai_status) {
+            case AI_LOADING:
+                snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
+                break;
+            case AI_READY:
+                snprintf(prompt, sizeof(prompt), "AI ready: awesh> ");
+                break;
+            case AI_FAILED:
+                snprintf(prompt, sizeof(prompt), "awesh> ");
+                break;
+        }
         
         // Get input with readline (supports history, editing)
         line = readline(prompt);
