@@ -22,12 +22,10 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 # Global verbose setting - shared with server.py
-VERBOSE = os.getenv('VERBOSE', '0') != '0'
-
 def debug_log(message):
     """Log debug message if verbose mode is enabled"""
-    global VERBOSE
-    if VERBOSE:
+    verbose = os.getenv('VERBOSE', '0') == '1'
+    if verbose:
         print(f"🔍 File Agent: {message}", file=sys.stderr)
 
 

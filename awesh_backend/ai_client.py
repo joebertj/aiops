@@ -15,11 +15,10 @@ AsyncOpenAI = None
 from .config import Config
 
 # Global verbose setting - same as server.py
-VERBOSE = os.getenv('VERBOSE', '0') == '1'
-
 def debug_log(message):
     """Log debug message if verbose mode is enabled"""
-    if VERBOSE:
+    verbose = os.getenv('VERBOSE', '0') == '1'
+    if verbose:
         print(f"🔧 AI Client: {message}", file=sys.stderr)
 
 

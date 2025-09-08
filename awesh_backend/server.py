@@ -16,11 +16,10 @@ from .bash_executor import BashExecutor
 from .file_agent import FileAgent
 
 # Global verbose setting
-VERBOSE = os.getenv('VERBOSE', '0') == '1'
-
 def debug_log(message):
     """Log debug message if verbose mode is enabled"""
-    if VERBOSE:
+    verbose = os.getenv('VERBOSE', '0') == '1'
+    if verbose:
         print(f"🔧 {message}", file=sys.stderr)
 
 import os
@@ -55,12 +54,13 @@ class AweshSocketBackend:
     async def initialize(self):
         """Initialize AI components"""
         try:
-            if VERBOSE:
+            verbose = os.getenv('VERBOSE', '0') == '1'
+            if verbose:
                 print("🤖 Backend: Initializing AI client...", file=sys.stderr)
             self.ai_client = AweshAIClient(self.config)
             await self.ai_client.initialize()
             self.ai_ready = True
-            if VERBOSE:
+            if verbose:
                 print("✅ Backend: AI client ready!", file=sys.stderr)
             
             self.bash_executor = BashExecutor(self.current_dir)
@@ -570,26 +570,19 @@ awesh: <command>"""
                             response = "AI_LOADING"
                         debug_log(f"STATUS response: {response}")
                     elif command.startswith("VERBOSE:"):
-                        # Toggle verbose mode dynamically
+                        # Toggle verbose mode dynamically by setting environment variable
                         verbose_setting = command.split(":", 1)[1].strip()
-                        global VERBOSE
                         if verbose_setting in ["1", "true", "on"]:
-                            VERBOSE = True
+                            os.environ['VERBOSE'] = '1'
                             response = "🔧 Verbose mode enabled\n"
                         elif verbose_setting in ["0", "false", "off"]:
-                            VERBOSE = False
+                            os.environ['VERBOSE'] = '0'
                             response = "🔇 Verbose mode disabled\n"
                         else:
-                            response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}\n"
+                            current_verbose = os.getenv('VERBOSE', '0') == '1'
+                            response = f"🔧 Verbose mode: {'enabled' if current_verbose else 'disabled'}\n"
                         
-                        # Also update file_agent VERBOSE setting
-                        try:
-                            from . import file_agent
-                            file_agent.VERBOSE = VERBOSE
-                        except ImportError:
-                            pass
-                            
-                        debug_log(f"VERBOSE command: {verbose_setting} -> {VERBOSE}")
+                        debug_log(f"VERBOSE command: {verbose_setting} -> {os.getenv('VERBOSE', '0')}")
                     elif command.startswith("AI_PROVIDER:"):
                         # Switch AI provider dynamically
                         provider = command.split(":", 1)[1].strip()
@@ -614,12 +607,14 @@ awesh: <command>"""
                 except ConnectionResetError:
                     break
                 except Exception as e:
-                    if VERBOSE:
+                    verbose = os.getenv('VERBOSE', '0') == '1'
+                    if verbose:
                         print(f"❌ Command processing error: {e}", file=sys.stderr)
                     break
                 
         except Exception as e:
-            if VERBOSE:
+            verbose = os.getenv('VERBOSE', '0') == '1'
+            if verbose:
                 print(f"💥 Client handler error: {e}", file=sys.stderr)
         finally:
             client_socket.close()
@@ -637,7 +632,8 @@ awesh: <command>"""
         self.socket.bind(SOCKET_PATH)
         self.socket.listen(1)
         
-        if VERBOSE:
+        verbose = os.getenv('VERBOSE', '0') == '1'
+        if verbose:
             print(f"🔧 Backend: Listening on {SOCKET_PATH}", file=sys.stderr)
         
         # Start AI initialization in background
@@ -651,14 +647,16 @@ awesh: <command>"""
         while True:
             try:
                 client_socket, _ = await loop.sock_accept(self.socket)
-                if VERBOSE:
+                verbose = os.getenv('VERBOSE', '0') == '1'
+                if verbose:
                     print("🔌 Backend: Client connected", file=sys.stderr)
                 
                 # Handle client in background
                 asyncio.create_task(self.handle_client(client_socket))
                 
             except Exception as e:
-                if VERBOSE:
+                verbose = os.getenv('VERBOSE', '0') == '1'
+                if verbose:
                     print(f"🚨 Server error: {e}", file=sys.stderr)
                 break
     
