@@ -378,20 +378,60 @@ Size: {match.size} bytes, Lines: {match.lines}
         if not file_contexts:
             return prompt
         
+        # Analyze the user's intent to provide better context
+        intent_context = self._analyze_user_intent(prompt, file_matches)
+        
         # Inject context before the original prompt
         enhanced_prompt = f"""FILE CONTEXT:
-The user mentioned files in their request. Here are the relevant files found:
+{intent_context}
 
 {''.join(file_contexts)}
 
 ORIGINAL USER REQUEST:
 {prompt}
 
-Please use the file content above to provide more accurate and context-aware responses. If you provide commands, format them as:
+Based on the file content above, {self._get_action_guidance(prompt)}. If you provide commands, format them as:
 awesh: <command>"""
         
         debug_log(f"Enhanced prompt with {len(file_matches)} files, {total_content_size} chars of content")
         return enhanced_prompt
+    
+    def _analyze_user_intent(self, prompt: str, file_matches: List[FileMatch]) -> str:
+        """Analyze what the user wants to do with the files"""
+        prompt_lower = prompt.lower()
+        file_names = [os.path.basename(match.path) for match in file_matches]
+        file_list = ", ".join(file_names)
+        
+        # Detect different types of intent
+        if any(word in prompt_lower for word in ['explain', 'what does', 'what is', 'describe', 'tell me about']):
+            return f"The user wants to understand what {file_list} does. Provide a clear explanation of the file's purpose, functionality, and key components."
+        elif any(word in prompt_lower for word in ['fix', 'debug', 'error', 'bug', 'problem', 'issue']):
+            return f"The user wants to fix or debug issues in {file_list}. Analyze the code for potential problems and suggest solutions."
+        elif any(word in prompt_lower for word in ['update', 'modify', 'change', 'edit', 'add', 'remove']):
+            return f"The user wants to modify {file_list}. Understand the current implementation and suggest specific changes."
+        elif any(word in prompt_lower for word in ['run', 'execute', 'test', 'build', 'install']):
+            return f"The user wants to run or execute something related to {file_list}. Provide the appropriate commands."
+        elif any(word in prompt_lower for word in ['improve', 'optimize', 'refactor', 'enhance']):
+            return f"The user wants to improve {file_list}. Analyze the code and suggest optimizations or refactoring."
+        else:
+            return f"The user is asking about {file_list}. Analyze the file content and provide helpful insights or actions."
+    
+    def _get_action_guidance(self, prompt: str) -> str:
+        """Get specific guidance for what the AI should do"""
+        prompt_lower = prompt.lower()
+        
+        if any(word in prompt_lower for word in ['explain', 'what does', 'what is', 'describe', 'tell me about']):
+            return "explain the purpose, structure, and functionality of the file(s). Don't just show the content - analyze and describe what it does"
+        elif any(word in prompt_lower for word in ['fix', 'debug', 'error', 'bug']):
+            return "identify potential issues in the code and provide specific fixes or debugging steps"
+        elif any(word in prompt_lower for word in ['update', 'modify', 'change', 'edit']):
+            return "suggest specific modifications to the file(s) with exact code changes"
+        elif any(word in prompt_lower for word in ['run', 'execute', 'test', 'build']):
+            return "provide the exact commands needed to run, test, or build based on the file content"
+        elif any(word in prompt_lower for word in ['improve', 'optimize', 'refactor']):
+            return "analyze the code and suggest specific improvements or refactoring opportunities"
+        else:
+            return "provide actionable insights, explanations, or commands based on the file content"
     
     async def _extract_file_content(self, match: FileMatch) -> str:
         """Extract relevant content from a file"""
