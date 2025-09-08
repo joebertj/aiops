@@ -544,25 +544,30 @@ int main() {
     char prompt[64];
     
     while (1) {
-        // Get username for prompt
+        // Get username and hostname for prompt
         char* username = getenv("USER");
         if (!username) username = "user";
+        
+        char hostname[64];
+        if (gethostname(hostname, sizeof(hostname)) != 0) {
+            strcpy(hostname, "localhost");
+        }
         
         // Dynamic prompt with optional AI status and colors
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36mawesh>\033[0m ", username);
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s>\033[0m ", username, hostname);
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36mawesh>\033[0m ", username);
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s>\033[0m ", username, hostname);
                     break;
                 case AI_FAILED:
-                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36mawesh>\033[0m ", username);
+                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s>\033[0m ", username, hostname);
                     break;
             }
         } else {
-            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36mawesh>\033[0m ", username);
+            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s>\033[0m ", username, hostname);
         }
         
         // Get input with readline (supports history, editing)
