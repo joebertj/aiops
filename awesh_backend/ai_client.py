@@ -61,19 +61,7 @@ class AweshAIClient:
         # Load system prompt (this can be slow if creating default)
         await self._load_system_prompt()
         
-        # Test connection with a simple request
-        try:
-            debug_log("Testing AI connection...")
-            test_messages = [{"role": "user", "content": "Hello"}]
-            response = await self.client.chat.completions.create(
-                model=os.getenv('OPENAI_MODEL', 'gpt-4'),
-                messages=test_messages,
-                max_tokens=10
-            )
-            debug_log("AI connection test successful")
-        except Exception as e:
-            debug_log(f"AI connection test failed: {e}")
-            raise
+        debug_log("AI client initialization completed")
         
     async def _load_system_prompt(self):
         """Load system prompt from configured file"""
@@ -89,13 +77,8 @@ class AweshAIClient:
         else:
             # Use default system prompt (don't block on file creation)
             self.system_prompt = self._get_default_system_prompt()
-            # Create file in background (non-blocking)
-            try:
-                prompt_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(prompt_file, 'w', encoding='utf-8') as f:
-                    f.write(self.system_prompt)
-            except Exception:
-                pass  # Don't block startup on file creation failure
+            debug_log("Using default system prompt")
+            # Skip file creation to avoid any I/O blocking
             
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for awesh"""
