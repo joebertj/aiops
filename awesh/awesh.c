@@ -185,10 +185,24 @@ int start_backend() {
 }
 
 void check_ai_status() {
-    if (state.socket_fd < 0) return;
+    if (state.socket_fd < 0) {
+        if (state.verbose >= 1) {
+            printf("🔧 Status check: No socket connection\n");
+        }
+        return;
+    }
+    
+    if (state.verbose >= 1) {
+        printf("🔧 Sending STATUS command...\n");
+    }
     
     // Send status check
-    if (send(state.socket_fd, "STATUS", 6, 0) < 0) return;
+    if (send(state.socket_fd, "STATUS", 6, 0) < 0) {
+        if (state.verbose >= 1) {
+            printf("🔧 Failed to send STATUS command\n");
+        }
+        return;
+    }
     
     // Read response
     char response[64];
@@ -196,12 +210,26 @@ void check_ai_status() {
     if (bytes > 0) {
         response[bytes] = '\0';
         if (state.verbose >= 1) {
-            printf("🔧 Status response: '%s'\n", response);
+            printf("🔧 Status response: '%s' (%zd bytes)\n", response, bytes);
         }
         if (strncmp(response, "AI_READY", 8) == 0) {
             state.ai_status = AI_READY;
+            if (state.verbose >= 1) {
+                printf("🔧 AI status updated to READY\n");
+            }
         } else if (strncmp(response, "AI_LOADING", 10) == 0) {
             state.ai_status = AI_LOADING;
+            if (state.verbose >= 1) {
+                printf("🔧 AI status updated to LOADING\n");
+            }
+        } else {
+            if (state.verbose >= 1) {
+                printf("🔧 Unknown status response: '%s'\n", response);
+            }
+        }
+    } else {
+        if (state.verbose >= 1) {
+            printf("🔧 No response to STATUS command (bytes=%zd)\n", bytes);
         }
     }
 }
