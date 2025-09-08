@@ -120,19 +120,54 @@ class FileAgent:
                 else:
                     candidates.add(match)
         
-        # Also look for simple words that might be filenames
+        # Look for words that are likely filenames (more restrictive)
         words = prompt.split()
         for word in words:
             # Clean word of punctuation
             clean_word = re.sub(r'[^\w\-\./]', '', word)
-            if clean_word and (
-                '.' in clean_word or 
-                '/' in clean_word or 
-                len(clean_word) > 3  # Potential filename without extension
-            ):
+            if clean_word and self._is_likely_filename(clean_word):
                 candidates.add(clean_word)
         
         return list(candidates)
+    
+    def _is_likely_filename(self, word: str) -> bool:
+        """Check if a word is likely to be a filename"""
+        # Skip common English words that are not filenames
+        common_words = {
+            'tell', 'me', 'about', 'what', 'is', 'the', 'this', 'that',
+            'how', 'why', 'when', 'where', 'who', 'can', 'will', 'would',
+            'should', 'could', 'do', 'does', 'did', 'have', 'has', 'had',
+            'are', 'was', 'were', 'be', 'been', 'being', 'get', 'got',
+            'make', 'made', 'take', 'took', 'come', 'came', 'go', 'went',
+            'see', 'saw', 'know', 'knew', 'think', 'thought', 'say', 'said',
+            'give', 'gave', 'find', 'found', 'use', 'used', 'work', 'works',
+            'run', 'runs', 'ran', 'show', 'shows', 'showed', 'help', 'helps',
+            'need', 'needs', 'want', 'wants', 'like', 'likes', 'look', 'looks',
+            'try', 'tries', 'tried', 'start', 'starts', 'started', 'stop',
+            'stops', 'stopped', 'open', 'opens', 'opened', 'close', 'closes',
+            'closed', 'read', 'reads', 'write', 'writes', 'wrote', 'create',
+            'creates', 'created', 'delete', 'deletes', 'deleted', 'update',
+            'updates', 'updated', 'change', 'changes', 'changed', 'fix',
+            'fixes', 'fixed', 'check', 'checks', 'checked', 'test', 'tests',
+            'tested', 'install', 'installs', 'installed', 'remove', 'removes',
+            'removed', 'add', 'adds', 'added', 'edit', 'edits', 'edited',
+            'modify', 'modifies', 'modified', 'build', 'builds', 'built',
+            'deploy', 'deploys', 'deployed', 'configure', 'configures', 'configured'
+        }
+        
+        word_lower = word.lower()
+        
+        # Skip common words
+        if word_lower in common_words:
+            return False
+            
+        # Must have file-like characteristics
+        return (
+            '.' in word or  # Has extension
+            '/' in word or  # Has path separator
+            (len(word) > 4 and word_lower.endswith(('py', 'js', 'ts', 'go', 'rs', 'c', 'h', 'cpp', 'java', 'rb', 'php', 'sh', 'yml', 'yaml', 'json', 'xml', 'html', 'css', 'md', 'txt', 'log', 'conf', 'cfg', 'ini', 'env'))) or  # Common file endings
+            (len(word) > 6 and not word_lower.isalpha())  # Long word with non-alpha chars (likely filename)
+        )
     
     async def _search_files(self, candidates: List[str]) -> List[FileMatch]:
         """Search for actual files matching the candidates"""
