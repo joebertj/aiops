@@ -292,7 +292,11 @@ void send_command(const char* cmd) {
                 char* newline = strchr(interactive_cmd, '\n');
                 if (newline) *newline = '\0';
                 
-                system(interactive_cmd);
+                // Run interactive command and wait for completion
+                int result = system(interactive_cmd);
+                if (result != 0 && state.verbose >= 1) {
+                    printf("Command exited with code: %d\n", result);
+                }
             } else {
                 printf("%s", response);
             }
