@@ -574,10 +574,10 @@ int main() {
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m %s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m %s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
                     break;
                 case AI_FAILED:
                     snprintf(prompt, sizeof(prompt), "%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
