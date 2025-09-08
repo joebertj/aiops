@@ -39,6 +39,7 @@ class BashExecutor:
                     command,
                     shell=True,
                     cwd=self.cwd,
+                    env=os.environ.copy(),  # Ensure full environment inheritance
                     # Inherit our stdin/stdout/stderr for interactive commands
                     stdin=None,
                     stdout=None, 
@@ -55,7 +56,8 @@ class BashExecutor:
                         capture_output=True,
                         text=True,
                         cwd=self.cwd,
-                        timeout=2.0  # 2 second native timeout
+                        timeout=2.0,  # 2 second native timeout
+                        env=os.environ.copy()  # Ensure full environment inheritance
                     )
                     return (result.returncode, result.stdout, result.stderr)
                 except subprocess.TimeoutExpired:
