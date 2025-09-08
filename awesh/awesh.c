@@ -448,24 +448,47 @@ void handle_interactive_bash(const char* cmd) {
 }
 
 void handle_bash_with_ai_fallback(const char* cmd) {
-    // If AI is ready, try bash silently first (suppress output)
-    int result;
+    // If AI is ready, try bash and capture output for AI context
     if (state.socket_fd >= 0 && state.ai_status == AI_READY) {
-        // Redirect stderr to /dev/null to suppress bash error messages
-        char silent_cmd[MAX_CMD_LEN + 20];
-        snprintf(silent_cmd, sizeof(silent_cmd), "%s 2>/dev/null", cmd);
-        result = system(silent_cmd);
-        
-        // If bash failed, send to AI (no error message shown)
-        if (result != 0) {
-            if (state.verbose >= 1) {
-                printf("Command failed (exit %d), trying AI assistance...\n", result);
+        // Capture both stdout and stderr for AI context
+        char temp_file[] = "/tmp/awesh_bash_XXXXXX";
+        int fd = mkstemp(temp_file);
+        if (fd != -1) {
+            close(fd);
+            
+            char bash_cmd[MAX_CMD_LEN + 100];
+            snprintf(bash_cmd, sizeof(bash_cmd), "%s > %s 2>&1", cmd, temp_file);
+            int result = system(bash_cmd);
+            
+            if (result == 0) {
+                // Bash succeeded - show output and clean up
+                char cat_cmd[200];
+                snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
+                system(cat_cmd);
+                unlink(temp_file);
+            } else {
+                // Bash failed - send command and output to AI as context
+                if (state.verbose >= 1) {
+                    printf("Command failed (exit %d), trying AI assistance...\n", result);
+                }
+                
+                // Send command with bash failure context to backend
+                char context_cmd[MAX_CMD_LEN + 200];
+                snprintf(context_cmd, sizeof(context_cmd), "BASH_FAILED:%d:%s:%s", result, cmd, temp_file);
+                send_command(context_cmd);
+                unlink(temp_file);
             }
-            send_command(cmd);
+        } else {
+            // Fallback if temp file creation fails
+            int result = system(cmd);
+            if (result != 0 && state.verbose >= 1) {
+                printf("Command failed (exit %d), trying AI assistance...\n", result);
+                send_command(cmd);
+            }
         }
     } else {
         // No AI available, run bash normally (show errors)
-        result = system(cmd);
+        system(cmd);
     }
 }
 

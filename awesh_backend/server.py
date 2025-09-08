@@ -83,6 +83,36 @@ class AweshSocketBackend:
                 if self.bash_executor:
                     self.bash_executor.set_cwd(self.current_dir)
                 return "OK"  # Send acknowledgment
+                
+            # Handle bash failure context from frontend
+            if command.startswith('BASH_FAILED:'):
+                parts = command.split(':', 3)  # BASH_FAILED:exit_code:original_cmd:temp_file
+                if len(parts) == 4:
+                    exit_code = int(parts[1])
+                    original_cmd = parts[2]
+                    temp_file = parts[3]
+                    
+                    # Read bash error output
+                    bash_output = ""
+                    try:
+                        with open(temp_file, 'r') as f:
+                            bash_output = f.read().strip()
+                    except:
+                        bash_output = f"Command failed with exit code {exit_code}"
+                    
+                    debug_log(f"process_command: Bash failed, sending to AI with context")
+                    
+                    # Create bash result context for AI
+                    bash_result = {
+                        'exit_code': exit_code,
+                        'stdout': bash_output if exit_code == 0 else "",
+                        'stderr': bash_output if exit_code != 0 else ""
+                    }
+                    
+                    return await self._handle_ai_prompt(original_cmd, bash_result)
+                else:
+                    debug_log("process_command: Invalid BASH_FAILED format")
+                    return "Error: Invalid bash failure context\n"
             
             # Note: cd and pwd should be handled by frontend as builtins
             
