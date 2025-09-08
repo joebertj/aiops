@@ -67,6 +67,9 @@ class AweshSocketBackend:
             
         except Exception as e:
             print(f"Backend: AI init failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            self.ai_ready = False
     
     
     

@@ -60,6 +60,20 @@ class AweshAIClient:
         # Load system prompt (this can be slow if creating default)
         await self._load_system_prompt()
         
+        # Test connection with a simple request
+        try:
+            debug_log("Testing AI connection...")
+            test_messages = [{"role": "user", "content": "Hello"}]
+            response = await self.client.chat.completions.create(
+                model=os.getenv('OPENAI_MODEL', 'gpt-4'),
+                messages=test_messages,
+                max_tokens=10
+            )
+            debug_log("AI connection test successful")
+        except Exception as e:
+            debug_log(f"AI connection test failed: {e}")
+            raise
+        
     async def _load_system_prompt(self):
         """Load system prompt from configured file"""
         prompt_file = self.config.system_prompt_file
