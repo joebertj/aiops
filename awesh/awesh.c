@@ -195,6 +195,9 @@ void check_ai_status() {
     ssize_t bytes = recv(state.socket_fd, response, sizeof(response) - 1, 0);
     if (bytes > 0) {
         response[bytes] = '\0';
+        if (state.verbose >= 1) {
+            printf("🔧 Status response: '%s'\n", response);
+        }
         if (strncmp(response, "AI_READY", 8) == 0) {
             state.ai_status = AI_READY;
         } else if (strncmp(response, "AI_LOADING", 10) == 0) {
