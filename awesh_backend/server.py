@@ -39,7 +39,7 @@ class AweshSocketBackend:
         self.last_user_command = ""  # Track last user command for retry
         # Initialize file agent with config
         file_agent_enabled = os.getenv('FILE_AGENT_ENABLED', '1') == '1'
-        file_agent_ai_enhance = os.getenv('FILE_AGENT_AI_ENHANCE', '1') == '1'
+        file_agent_ai_enhance = True  # Always enabled for built-in agents
         max_file_size = int(os.getenv('FILE_AGENT_MAX_FILE_SIZE', '50000'))
         max_total_content = int(os.getenv('FILE_AGENT_MAX_TOTAL_CONTENT', '10000'))
         max_files = int(os.getenv('FILE_AGENT_MAX_FILES', '5'))

@@ -50,7 +50,7 @@ class FileAgent:
         self.max_total_content = max_total_content  # Max total content to inject
         self.max_files = max_files  # Max number of files to include
         self.enabled = enabled
-        self.ai_enhance = ai_enhance  # Whether to use AI to enhance prompts
+        self.ai_enhance = ai_enhance  # Always True for built-in agents
         self.current_dir = os.getcwd()
         
         # File patterns that likely indicate file references
