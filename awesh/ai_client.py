@@ -13,8 +13,12 @@ AsyncOpenAI = None
 
 try:
     from .config import Config
+    from .command_safety import CommandSafetyFilter
+    from .sensitive_data_filter import SensitiveDataFilter
 except ImportError:
     from config import Config
+    from command_safety import CommandSafetyFilter
+    from sensitive_data_filter import SensitiveDataFilter
 
 
 class AweshAIClient:
@@ -24,6 +28,8 @@ class AweshAIClient:
         self.config = config
         self.client = None
         self.system_prompt = None
+        self.safety_filter = CommandSafetyFilter()
+        self.sensitive_filter = SensitiveDataFilter()
         
     async def initialize(self):
         """Initialize the AI client and load system prompt"""
@@ -66,10 +72,10 @@ class AweshAIClient:
             
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for awesh"""
-        return """You are awesh, an AI-aware interactive shell assistant designed for operations teams and system administrators. Your role is to help users GET THINGS DONE in the terminal quickly and efficiently.
+        return """You are awesh, an AI-aware interactive shell assistant designed for operations teams and system administrators. Your role is to help users GET THINGS DONE in the terminal quickly and efficiently, while prioritizing safety and preventing accidental damage.
 
 TERMINAL-FIRST MINDSET:
-This is a terminal environment where users want immediate, actionable solutions. When a user states what they want to do, your job is to provide the exact commands they need to execute to achieve their goal.
+This is a terminal environment where users want immediate, actionable solutions. When a user states what they want to do, your job is to provide the exact commands they need to execute to achieve their goal SAFELY.
 
 RESPONSE FORMAT:
 - Always assume the user wants to execute commands to accomplish their task
@@ -100,19 +106,48 @@ Response:
 awesh: tar -czf /backup/$(basename $(pwd))_$(date +%Y%m%d_%H%M%S).tar.gz . && \\
        echo "Backup created: /backup/$(basename $(pwd))_$(date +%Y%m%d_%H%M%S).tar.gz"
 
-SAFETY APPROACH:
-- Include safety checks in commands when possible (e.g., mkdir -p, cp -i)
-- For destructive operations, suggest dry-run options first
-- Add confirmation prompts for dangerous operations
-- Use --dry-run, --simulate, or similar flags when available
+CRITICAL SAFETY RULES - NEVER VIOLATE THESE:
+- NEVER suggest 'rm -rf /' or 'rm -rf *' or similar destructive patterns
+- NEVER suggest 'chmod 777' on system directories or sensitive files
+- NEVER suggest 'dd' commands that could overwrite disks or partitions
+- NEVER suggest commands that modify /etc/passwd, /etc/shadow, or /etc/sudoers
+- NEVER suggest 'kill -9 1' or commands that could crash the system
+- NEVER suggest 'sudo su -' or privilege escalation without explicit need
+- NEVER suggest commands that could expose sensitive data or credentials
+- NEVER suggest reading files like .env, id_rsa, .ssh/*, passwords.txt, or other sensitive files
+- NEVER suggest commands that would display API keys, tokens, passwords, or secrets
+
+SAFETY-FIRST APPROACH:
+- Always use interactive flags (-i) for rm, mv, cp operations
+- For file deletions, suggest 'ls' first to show what would be deleted
+- Use --dry-run or --simulate flags when available before actual execution
+- For system changes, suggest backup commands first
+- When modifying permissions, use minimal necessary permissions (755 not 777)
+- For package operations, suggest checking what will be installed/removed first
+- Always validate paths exist before operating on them
+
+SAFE ALTERNATIVES:
+- Instead of 'rm -rf', suggest 'rm -ri' or 'find ... -delete'
+- Instead of 'chmod 777', suggest 'chmod 755' or 'chmod 644'
+- Instead of 'kill -9', suggest 'kill -TERM' first
+- Instead of direct system file edits, suggest using proper tools (visudo, etc.)
+
+WHEN TO REFUSE:
+If a user asks for something that could cause:
+- Data loss or corruption
+- System instability or crashes  
+- Security vulnerabilities
+- Privilege escalation attacks
+
+Politely explain why the command is dangerous and suggest safer alternatives.
 
 EFFICIENCY RULES:
 - Assume the user knows their environment
 - Don't over-explain basic commands
-- Provide the most direct path to the solution
+- Provide the most direct SAFE path to the solution
 - Focus on the task, not the theory
 
-Remember: Terminal users want to execute and see results. Give them the exact commands they need to achieve their goals."""
+Remember: Terminal users want to execute and see results, but SAFETY COMES FIRST. Help them achieve their goals without risking their system or data."""
         
     async def _create_default_system_prompt_file(self, prompt_file: Path):
         """Create default system prompt file"""
@@ -147,19 +182,28 @@ Remember: Terminal users want to execute and see results. Give them the exact co
                 "content": self.system_prompt
             })
             
-        # Add context if provided
+        # Add context if provided (after filtering sensitive data)
         if context:
-            context_str = self._format_context(context)
+            safe_context = self.sensitive_filter.create_safe_context(context)
+            context_str = self._format_context(safe_context)
             if context_str:
                 messages.append({
                     "role": "system",
                     "content": f"Current context:\n{context_str}"
                 })
         
-        # Add user prompt
+        # Add user prompt (after filtering sensitive data)
+        should_block, block_reason = self.sensitive_filter.should_block_from_ai(user_prompt)
+        if should_block:
+            # Block the entire prompt if it contains high-risk sensitive data
+            filtered_prompt = f"[BLOCKED: User prompt contains {block_reason}. Please ask user to rephrase without sensitive information.]"
+        else:
+            # Filter sensitive data but keep the prompt
+            filtered_prompt = self.sensitive_filter.filter_sensitive_data(user_prompt)
+        
         messages.append({
             "role": "user",
-            "content": user_prompt
+            "content": filtered_prompt
         })
         
         try:
@@ -184,13 +228,19 @@ Remember: Terminal users want to execute and see results. Give them the exact co
             
             if try_streaming:
                 try:
-                    # Streaming response
+                    # Streaming response - buffer content for safety filtering
                     api_params["stream"] = True
                     stream = await self.client.chat.completions.create(**api_params)
                     
+                    buffered_content = ""
                     async for chunk in stream:
                         if chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
+                            buffered_content += chunk.choices[0].delta.content
+                    
+                    # Apply safety filtering to complete response
+                    if buffered_content:
+                        safe_response = self.safety_filter.sanitize_ai_response(buffered_content)
+                        yield safe_response
                     return
                     
                 except Exception as e:
@@ -209,7 +259,9 @@ Remember: Terminal users want to execute and see results. Give them the exact co
             response = await self.client.chat.completions.create(**api_params)
             
             if response.choices[0].message.content:
-                yield response.choices[0].message.content
+                # Apply safety filtering to the response
+                safe_response = self.safety_filter.sanitize_ai_response(response.choices[0].message.content)
+                yield safe_response
                     
         except Exception as e:
             yield f"Error processing prompt: {e}"

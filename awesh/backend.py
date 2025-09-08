@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import Config
 from ai_client import AweshAIClient
 from bash_executor import BashExecutor
+from command_safety import CommandSafetyFilter
+from sensitive_data_filter import SensitiveDataFilter
 
 
 class AweshBackend:
@@ -27,6 +29,9 @@ class AweshBackend:
         self.ai_client = None
         self.bash_executor = None
         self.ai_ready = False
+        self.safety_filter = CommandSafetyFilter()
+        self.sensitive_filter = SensitiveDataFilter()
+        self.pending_confirmation = None  # Store command awaiting confirmation
         
     async def initialize(self):
         """Initialize heavy AI components"""
@@ -66,6 +71,29 @@ class AweshBackend:
     async def process_command(self, command: str) -> dict:
         """Smart routing: bypass AI for clean successful commands"""
         try:
+            # Check for confirmation responses first
+            if command.lower().strip() in ['y', 'yes', 'n', 'no']:
+                return await self._handle_confirmation_response(command)
+            
+            # Check command safety before executing
+            is_safe, unsafe_reason = self.safety_filter.is_command_safe(command)
+            if not is_safe:
+                return {
+                    "stdout": f"🚫 Command blocked for safety: {unsafe_reason}\n",
+                    "stderr": "",
+                    "exit_code": 1
+                }
+            
+            # Check if command requires confirmation
+            needs_confirm, confirm_reason = self.safety_filter.requires_confirmation(command)
+            if needs_confirm:
+                self.pending_confirmation = command
+                return {
+                    "stdout": f"⚠️  WARNING: {confirm_reason}\n🔍 Command: {command}\n❓ Are you sure you want to run this? (y/n): ",
+                    "stderr": "",
+                    "exit_code": 0
+                }
+            
             # Try bash first
             if self.bash_executor:
                 exit_code, stdout, stderr = await self.bash_executor.execute(command)
@@ -78,9 +106,13 @@ class AweshBackend:
                 if exit_code == 0 and stdout and not stderr:
                     return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
                 
-                # Command failed - send to AI if ready
+                # Command failed - send to AI if ready (after filtering sensitive data)
                 if self.ai_ready:
-                    bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
+                    # Filter sensitive data from command output before sending to AI
+                    filtered_stdout = self.sensitive_filter.filter_command_output(command, stdout)
+                    filtered_stderr = self.sensitive_filter.filter_command_output(command, stderr)
+                    
+                    bash_result = {"stdout": filtered_stdout, "stderr": filtered_stderr, "exit_code": exit_code}
                     return await self._handle_ai_prompt(command, bash_result)
                 else:
                     # AI not ready - show bash output + hint
@@ -96,6 +128,48 @@ class AweshBackend:
         except Exception as e:
             return {"stdout": "", "stderr": f"Backend error: {e}\n", "exit_code": 1}
     
+    async def _handle_confirmation_response(self, response: str) -> dict:
+        """Handle user confirmation response (y/n)"""
+        if not self.pending_confirmation:
+            return {
+                "stdout": "No command pending confirmation.\n",
+                "stderr": "",
+                "exit_code": 0
+            }
+        
+        response_lower = response.lower().strip()
+        command = self.pending_confirmation
+        self.pending_confirmation = None
+        
+        if response_lower in ['y', 'yes']:
+            # User confirmed - execute the command
+            try:
+                if self.bash_executor:
+                    exit_code, stdout, stderr = await self.bash_executor.execute(command)
+                    return {
+                        "stdout": f"✅ Executed: {command}\n{stdout}",
+                        "stderr": stderr,
+                        "exit_code": exit_code
+                    }
+                else:
+                    return {
+                        "stdout": "Bash executor not available.\n",
+                        "stderr": "",
+                        "exit_code": 1
+                    }
+            except Exception as e:
+                return {
+                    "stdout": "",
+                    "stderr": f"Error executing command: {e}\n",
+                    "exit_code": 1
+                }
+        else:
+            # User cancelled
+            return {
+                "stdout": f"❌ Cancelled: {command}\n",
+                "stderr": "",
+                "exit_code": 0
+            }
     
     async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> dict:
         """Let AI process everything - all bash output goes through AI first"""
