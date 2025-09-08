@@ -553,21 +553,24 @@ int main() {
             strcpy(hostname, "localhost");
         }
         
+        // Use $ for regular user, # for root (like bash)
+        char prompt_char = (getuid() == 0) ? '#' : '$';
+        
         // Dynamic prompt with optional AI status and colors
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s>\033[0m ", username, hostname);
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s>\033[0m ", username, hostname);
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
                     break;
                 case AI_FAILED:
-                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s>\033[0m ", username, hostname);
+                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
                     break;
             }
         } else {
-            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s>\033[0m ", username, hostname);
+            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
         }
         
         // Get input with readline (supports history, editing)
