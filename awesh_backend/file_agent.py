@@ -105,8 +105,8 @@ class FileAgent:
         return enhanced_prompt, True
     
     def _extract_file_candidates(self, prompt: str) -> List[str]:
-        """Extract potential file references from the prompt"""
-        candidates = set()
+        """Extract potential file references from the prompt and verify they exist"""
+        potential_candidates = set()
         
         # Apply each pattern
         for pattern in self.file_patterns:
@@ -116,9 +116,9 @@ class FileAgent:
                     # For patterns with groups, take the full match
                     full_match = re.search(pattern, prompt, re.IGNORECASE)
                     if full_match:
-                        candidates.add(full_match.group(0))
+                        potential_candidates.add(full_match.group(0))
                 else:
-                    candidates.add(match)
+                    potential_candidates.add(match)
         
         # Look for words that are likely filenames (more restrictive)
         words = prompt.split()
@@ -126,9 +126,18 @@ class FileAgent:
             # Clean word of punctuation
             clean_word = re.sub(r'[^\w\-\./]', '', word)
             if clean_word and self._is_likely_filename(clean_word):
-                candidates.add(clean_word)
+                potential_candidates.add(clean_word)
         
-        return list(candidates)
+        # Verify candidates actually exist in filesystem
+        verified_candidates = []
+        for candidate in potential_candidates:
+            if self._candidate_exists_in_filesystem(candidate):
+                verified_candidates.append(candidate)
+                self.debug_log(f"Verified file candidate: {candidate}")
+            else:
+                self.debug_log(f"Rejected candidate (not found): {candidate}")
+        
+        return verified_candidates
     
     def _is_likely_filename(self, word: str) -> bool:
         """Check if a word is likely to be a filename"""
@@ -168,6 +177,34 @@ class FileAgent:
             (len(word) > 4 and word_lower.endswith(('py', 'js', 'ts', 'go', 'rs', 'c', 'h', 'cpp', 'java', 'rb', 'php', 'sh', 'yml', 'yaml', 'json', 'xml', 'html', 'css', 'md', 'txt', 'log', 'conf', 'cfg', 'ini', 'env'))) or  # Common file endings
             (len(word) > 6 and not word_lower.isalpha())  # Long word with non-alpha chars (likely filename)
         )
+    
+    def _candidate_exists_in_filesystem(self, candidate: str) -> bool:
+        """Check if a candidate actually exists in the filesystem"""
+        try:
+            # Try as-is first
+            if os.path.isfile(candidate):
+                return True
+            
+            # Try with current directory
+            full_path = os.path.join(self.current_dir, candidate)
+            if os.path.isfile(full_path):
+                return True
+            
+            # For candidates without extensions, try common extensions
+            if '.' not in candidate:
+                common_extensions = ['.py', '.js', '.ts', '.go', '.rs', '.c', '.cpp', '.h', 
+                                   '.java', '.rb', '.php', '.sh', '.yml', '.yaml', '.json', 
+                                   '.xml', '.html', '.css', '.md', '.txt', '.log', '.conf', 
+                                   '.cfg', '.ini', '.env']
+                
+                for ext in common_extensions:
+                    test_path = os.path.join(self.current_dir, candidate + ext)
+                    if os.path.isfile(test_path):
+                        return True
+            
+            return False
+        except Exception:
+            return False
     
     async def _search_files(self, candidates: List[str]) -> List[FileMatch]:
         """Search for actual files matching the candidates"""
