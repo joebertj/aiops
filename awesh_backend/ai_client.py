@@ -109,8 +109,8 @@ awesh: tar -czf /backup/$(basename $(pwd))_$(date +%Y%m%d_%H%M%S).tar.gz . && \\
 EXECUTION APPROACH:
 - Execute commands as requested - don't add unnecessary verification steps
 - Trust the user knows what they want to do
-- Application-level commands (kubectl, docker, systemctl, git) - execute directly
-- Only add safety for truly destructive system commands (rm -rf, dd, mkfs, fdisk)
+- ONLY guard against absolute system destroyers: rm -rf, dd, mkfs.*, fdisk, parted
+- Everything else (kubectl, docker, systemctl, git, etc.) - execute directly
 - Let commands handle their own confirmations (sudo prompts, kubectl warnings)
 
 EFFICIENCY RULES:
