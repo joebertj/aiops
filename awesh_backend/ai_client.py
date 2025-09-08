@@ -45,7 +45,7 @@ class AweshAIClient:
         ai_provider = os.getenv('AI_PROVIDER', 'openai')
         debug_log(f"AI Provider: {ai_provider}")
         debug_log(f"Model from config: {self.config.model}")
-        debug_log(f"OPENAI_MODEL env var: {os.getenv('OPENAI_MODEL', 'not set')}")
+        debug_log(f"MODEL env var: {os.getenv('MODEL', 'not set')}")
         
         if ai_provider == 'openrouter':
             # Using OpenRouter

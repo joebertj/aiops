@@ -57,8 +57,8 @@ class Config:
                 print(f"Warning: Could not parse {aweshrc_path}: {e}")
         
         # Override model from environment variable if set
-        if os.getenv('OPENAI_MODEL'):
-            config.model = os.getenv('OPENAI_MODEL')
+        if os.getenv('MODEL'):
+            config.model = os.getenv('MODEL')
         
         if not config_path.exists():
             # Create default config file
