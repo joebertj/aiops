@@ -186,12 +186,12 @@ aiops/
 
 ## 🚀 Quick Start
 
-### Install awesh - AIWES (Awe-Inspired Workspace Environment Shell)
+### Install awesh
 
 ```bash
-# Use deployment MCP for installation
+# Use deployment MCP for clean installation
 cd deployment/
-python3 deployment_mcp.py install
+python3 deployment_mcp.py clean_install
 ```
 
 ### Try Kubernetes MCP Server

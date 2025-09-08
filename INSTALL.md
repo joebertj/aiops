@@ -5,7 +5,8 @@
 ## Quick Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/joebertj/aiops/main/install.sh | bash
+cd aiops/deployment/
+python3 deployment_mcp.py clean_install
 ```
 
 ## Manual Installation
@@ -38,10 +39,10 @@ sudo yum install python3 python3-pip readline-devel
    cd aiops
    ```
 
-2. **Run the installer:**
+2. **Run the deployment MCP:**
    ```bash
-   chmod +x install.sh
-   ./install.sh
+   cd deployment/
+   python3 deployment_mcp.py clean_install
    ```
 
 3. **Restart your terminal** or run:
@@ -133,6 +134,8 @@ AI ready: awesh> how do I find large files?
 ## Uninstall
 
 ```bash
+cd deployment/
+python3 deployment_mcp.py kill_force
 rm ~/.local/bin/awesh
 pip3 uninstall awesh-backend
 rm ~/.aweshrc ~/.awesh.sock
