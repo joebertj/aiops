@@ -16,6 +16,7 @@ awesh_backend/__main__.py
 awesh_backend/ai_client.py
 awesh_backend/bash_executor.py
 awesh_backend/config.py
+awesh_backend/file_agent.py
 awesh_backend/server.py
 awesh_backend.egg-info/PKG-INFO
 awesh_backend.egg-info/SOURCES.txt

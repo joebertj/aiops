@@ -13,6 +13,7 @@ from pathlib import Path
 from .config import Config
 from .ai_client import AweshAIClient
 from .bash_executor import BashExecutor
+from .file_agent import FileAgent
 
 # Global verbose setting
 VERBOSE = os.getenv('VERBOSE', '0') == '1'
@@ -36,6 +37,18 @@ class AweshSocketBackend:
         self.socket = None
         self.current_dir = os.getcwd()  # Track current working directory
         self.last_user_command = ""  # Track last user command for retry
+        # Initialize file agent with config
+        file_agent_enabled = os.getenv('FILE_AGENT_ENABLED', '1') == '1'
+        max_file_size = int(os.getenv('FILE_AGENT_MAX_FILE_SIZE', '50000'))
+        max_total_content = int(os.getenv('FILE_AGENT_MAX_TOTAL_CONTENT', '10000'))
+        max_files = int(os.getenv('FILE_AGENT_MAX_FILES', '5'))
+        
+        self.file_agent = FileAgent(
+            max_file_size=max_file_size,
+            max_total_content=max_total_content,
+            max_files=max_files,
+            enabled=file_agent_enabled
+        )
         
     async def initialize(self):
         """Initialize AI components"""
@@ -147,6 +160,13 @@ class AweshSocketBackend:
                 return "❌ AI not ready yet - still loading models\n"
         
         try:
+            # Process prompt through file agent first
+            if not bash_result:  # Only for direct AI prompts, not bash failures
+                enhanced_prompt, files_found = await self.file_agent.process_prompt(prompt, self.current_dir)
+                if files_found:
+                    debug_log(f"File agent enhanced prompt with file context")
+                    prompt = enhanced_prompt
+            
             # Give AI full context
             if bash_result:
                 ai_input = f"""User command: {prompt}

@@ -119,6 +119,12 @@ export OPENROUTER_MODEL=anthropic/claude-3-sonnet
 
 # Display Options  
 export VERBOSE=1              # 0=silent, 1=show AI status+debug, 2+=more verbose (default: 1)
+
+# File Agent Options
+export FILE_AGENT_ENABLED=1           # 1=enabled, 0=disabled (default: 1)
+export FILE_AGENT_MAX_FILE_SIZE=50000 # Max size per file in bytes (default: 50000)
+export FILE_AGENT_MAX_TOTAL_CONTENT=10000 # Max total content to inject (default: 10000)
+export FILE_AGENT_MAX_FILES=5         # Max number of files to include (default: 5)
 ```
 
 **Example configuration:**
