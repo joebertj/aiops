@@ -285,21 +285,7 @@ void send_command(const char* cmd) {
         if (bytes > 0) {
             response[bytes] = '\0';
             
-            // Check if backend wants us to handle interactive command
-            if (strncmp(response, "INTERACTIVE:", 12) == 0) {
-                const char* interactive_cmd = response + 12;
-                // Remove trailing newline
-                char* newline = strchr(interactive_cmd, '\n');
-                if (newline) *newline = '\0';
-                
-                // Run interactive command and wait for completion
-                int result = system(interactive_cmd);
-                if (result != 0 && state.verbose >= 1) {
-                    printf("Command exited with code: %d\n", result);
-                }
-            } else {
-                printf("%s", response);
-            }
+            printf("%s", response);
             
             // Check AI status after command (efficient - we're already communicating)
             if (state.ai_status == AI_LOADING) {
@@ -427,6 +413,40 @@ void handle_awesh_command(const char* cmd) {
     }
 }
 
+int is_interactive_bash_command(const char* cmd) {
+    if (!cmd || strlen(cmd) == 0) return 0;
+    
+    // Interactive commands that should run directly in C frontend
+    const char* interactive_commands[] = {
+        "vi", "vim", "nano", "emacs", "htop", "top", "less", "more", 
+        "man", "ssh", "ftp", "telnet", "mysql", "psql", "python", 
+        "python3", "node", "irb", "bash", "sh", "zsh", "sudo"
+    };
+    
+    char cmd_copy[MAX_CMD_LEN];
+    strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
+    cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+    
+    char* first_word = strtok(cmd_copy, " \t");
+    if (!first_word) return 0;
+    
+    // Check if first word is interactive
+    for (int i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
+        if (strcmp(first_word, interactive_commands[i]) == 0) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+void handle_interactive_bash(const char* cmd) {
+    int result = system(cmd);
+    if (result != 0 && state.verbose >= 1) {
+        printf("Command exited with code: %d\n", result);
+    }
+}
+
 void handle_builtin(const char* cmd) {
     if (strcmp(cmd, "exit") == 0) {
         cleanup_and_exit(0);
@@ -517,6 +537,8 @@ int main() {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
             handle_builtin(line);
+        } else if (is_interactive_bash_command(line)) {
+            handle_interactive_bash(line);
         } else {
             send_command(line);
         }

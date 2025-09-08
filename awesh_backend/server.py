@@ -68,15 +68,6 @@ class AweshSocketBackend:
         except Exception as e:
             print(f"Backend: AI init failed: {e}", file=sys.stderr)
     
-    def _is_interactive_command(self, command: str) -> bool:
-        """Check if command needs interactive terminal"""
-        interactive_commands = {
-            'vi', 'vim', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
-            'man', 'ssh', 'ftp', 'telnet', 'mysql', 'psql', 'python', 
-            'python3', 'node', 'irb', 'bash', 'sh', 'zsh'
-        }
-        first_word = command.strip().split()[0] if command.strip() else ""
-        return first_word in interactive_commands
     
     
     async def process_command(self, command: str) -> str:
@@ -95,10 +86,6 @@ class AweshSocketBackend:
             
             # Note: cd and pwd should be handled by frontend as builtins
             
-            # Interactive commands - tell frontend to handle directly
-            if self._is_interactive_command(command):
-                debug_log("process_command: Interactive command detected")
-                return f"INTERACTIVE:{command}\n"
             
             # Try bash first
             if self.bash_executor:
