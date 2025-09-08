@@ -337,13 +337,7 @@ void handle_awesh_command(const char* cmd) {
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-        const char* model = NULL;
-        
-        if (strcmp(ai_provider, "openrouter") == 0) {
-            model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
-        } else {
-            model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
-        }
+        const char* model = getenv("MODEL") ? getenv("MODEL") : "not configured";
         
         // Verbose status - show everything
         printf("🔍 Awesh Verbose Status:\n");
