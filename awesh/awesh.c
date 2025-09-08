@@ -567,24 +567,24 @@ int main() {
             }
         }
         
-        // Use $ for regular user, # for root (like bash)
-        char prompt_char = (getuid() == 0) ? '#' : '$';
+        // Color-code username: red for root, green for normal user
+        char* user_color = (getuid() == 0) ? "\033[31m" : "\033[32m";  // Red for root, green for user
         
         // Dynamic prompt with optional AI status and colors
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m %s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m %s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
                     break;
                 case AI_FAILED:
-                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
                     break;
             }
         } else {
-            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
+            snprintf(prompt, sizeof(prompt), "%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
         }
         
         // Get input with readline (supports history, editing)
