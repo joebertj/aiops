@@ -457,7 +457,7 @@ void handle_bash_with_ai_fallback(const char* cmd) {
     }
     
     // If command failed and we have AI backend available, try AI assistance
-    if (state.socket_fd >= 0 && state.ai_status == AI_READY) {
+    if (state.socket_fd >= 0 && state.ai_status != AI_FAILED) {
         if (state.verbose >= 1) {
             printf("Command failed (exit %d), trying AI assistance...\n", result);
         }
