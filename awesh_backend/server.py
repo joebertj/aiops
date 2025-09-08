@@ -554,6 +554,14 @@ awesh: <command>"""
                             response = "🔇 Verbose mode disabled\n"
                         else:
                             response = f"🔧 Verbose mode: {'enabled' if VERBOSE else 'disabled'}\n"
+                        
+                        # Also update file_agent VERBOSE setting
+                        try:
+                            from . import file_agent
+                            file_agent.VERBOSE = VERBOSE
+                        except ImportError:
+                            pass
+                            
                         debug_log(f"VERBOSE command: {verbose_setting} -> {VERBOSE}")
                     elif command.startswith("AI_PROVIDER:"):
                         # Switch AI provider dynamically

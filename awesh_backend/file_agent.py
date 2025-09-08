@@ -14,11 +14,21 @@ Features:
 """
 
 import os
+import sys
 import re
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
+
+# Global verbose setting - shared with server.py
+VERBOSE = os.getenv('VERBOSE', '0') != '0'
+
+def debug_log(message):
+    """Log debug message if verbose mode is enabled"""
+    global VERBOSE
+    if VERBOSE:
+        print(f"🔍 File Agent: {message}", file=sys.stderr)
 
 
 @dataclass
@@ -60,11 +70,6 @@ class FileAgent:
             '.pyc', '.pyo', '.class', '.jar', '.war'
         }
     
-    def debug_log(self, message: str):
-        """Debug logging - matches server.py pattern"""
-        verbose = os.getenv('VERBOSE', '0')
-        if verbose != '0':
-            print(f"🔍 File Agent: {message}", flush=True)
     
     async def process_prompt(self, prompt: str, working_dir: str = None) -> Tuple[str, bool]:
         """
@@ -79,25 +84,25 @@ class FileAgent:
         if working_dir:
             self.current_dir = working_dir
             
-        self.debug_log(f"Processing prompt in directory: {self.current_dir}")
+        debug_log(f"Processing prompt in directory: {self.current_dir}")
         
         # Extract potential file references from prompt
         file_candidates = self._extract_file_candidates(prompt)
         
         if not file_candidates:
-            self.debug_log("No file candidates found in prompt")
+            debug_log("No file candidates found in prompt")
             return prompt, False
             
-        self.debug_log(f"Found {len(file_candidates)} file candidates: {file_candidates}")
+        debug_log(f"Found {len(file_candidates)} file candidates: {file_candidates}")
         
         # Search for actual files
         file_matches = await self._search_files(file_candidates)
         
         if not file_matches:
-            self.debug_log("No actual files found for candidates")
+            debug_log("No actual files found for candidates")
             return prompt, False
             
-        self.debug_log(f"Found {len(file_matches)} file matches")
+        debug_log(f"Found {len(file_matches)} file matches")
         
         # Extract and inject file content
         enhanced_prompt = await self._inject_file_context(prompt, file_matches)
@@ -133,9 +138,9 @@ class FileAgent:
         for candidate in potential_candidates:
             if self._candidate_exists_in_filesystem(candidate):
                 verified_candidates.append(candidate)
-                self.debug_log(f"Verified file candidate: {candidate}")
+                debug_log(f"Verified file candidate: {candidate}")
             else:
-                self.debug_log(f"Rejected candidate (not found): {candidate}")
+                debug_log(f"Rejected candidate (not found): {candidate}")
         
         return verified_candidates
     
@@ -269,9 +274,9 @@ class FileAgent:
                     if match:
                         matches.append(match)
         except subprocess.TimeoutExpired:
-            self.debug_log(f"Timeout searching for partial matches of {candidate}")
+            debug_log(f"Timeout searching for partial matches of {candidate}")
         except Exception as e:
-            self.debug_log(f"Error in partial search: {e}")
+            debug_log(f"Error in partial search: {e}")
         
         return matches
     
@@ -290,9 +295,9 @@ class FileAgent:
                     if match:
                         matches.append(match)
         except subprocess.TimeoutExpired:
-            self.debug_log(f"Timeout searching for fuzzy matches of {candidate}")
+            debug_log(f"Timeout searching for fuzzy matches of {candidate}")
         except Exception as e:
-            self.debug_log(f"Error in fuzzy search: {e}")
+            debug_log(f"Error in fuzzy search: {e}")
         
         return matches
     
@@ -323,7 +328,7 @@ class FileAgent:
             
             # Skip very large files
             if size > self.max_file_size:
-                self.debug_log(f"Skipping large file: {path} ({size} bytes)")
+                debug_log(f"Skipping large file: {path} ({size} bytes)")
                 return None
             
             # Count lines for text files
@@ -342,7 +347,7 @@ class FileAgent:
                 lines=lines
             )
         except Exception as e:
-            self.debug_log(f"Error creating file match for {path}: {e}")
+            debug_log(f"Error creating file match for {path}: {e}")
             return None
     
     async def _inject_file_context(self, prompt: str, file_matches: List[FileMatch]) -> str:
@@ -385,7 +390,7 @@ ORIGINAL USER REQUEST:
 Please use the file content above to provide more accurate and context-aware responses. If you provide commands, format them as:
 awesh: <command>"""
         
-        self.debug_log(f"Enhanced prompt with {len(file_matches)} files, {total_content_size} chars of content")
+        debug_log(f"Enhanced prompt with {len(file_matches)} files, {total_content_size} chars of content")
         return enhanced_prompt
     
     async def _extract_file_content(self, match: FileMatch) -> str:
@@ -420,5 +425,5 @@ awesh: <command>"""
                 return content[:3000] + ("\n... [truncated]" if len(content) > 3000 else "")
                 
         except Exception as e:
-            self.debug_log(f"Error reading file {match.path}: {e}")
+            debug_log(f"Error reading file {match.path}: {e}")
             return f"[Error reading file: {e}]"
