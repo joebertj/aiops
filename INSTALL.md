@@ -54,19 +54,21 @@ sudo yum install python3 python3-pip readline-devel
 
 ### OpenAI API Key (Required)
 
-Add your OpenAI API key to `~/.aweshrc`:
+Set your OpenAI API key as an environment variable:
 
 ```bash
-echo 'OPENAI_API_KEY=your_api_key_here' >> ~/.aweshrc
+export OPENAI_API_KEY=your_api_key_here
+# Add to ~/.bashrc or ~/.profile to persist across sessions
+echo 'export OPENAI_API_KEY=your_api_key_here' >> ~/.bashrc
 ```
 
 ### Optional Settings
 
+Set additional environment variables as needed:
+
 ```bash
-# ~/.aweshrc
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4                    # Default model
-SHOW_AI_STATUS=true                   # Show AI status in prompt
+export OPENAI_MODEL=gpt-4                    # Default model
+export VERBOSE=1                             # 0=silent, 1=show AI status+debug, 2+=more verbose
 ```
 
 ## Usage

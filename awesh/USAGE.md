@@ -8,10 +8,10 @@
    ./install.sh
    ```
 
-2. **Configure your API key** in `~/.aweshrc`:
+2. **Configure your API key** using environment variables:
    ```bash
-   OPENAI_API_KEY=your_api_key_here
-   OPENAI_MODEL=gpt-5
+   export OPENAI_API_KEY=your_api_key_here
+   export OPENAI_MODEL=gpt-5
    ```
 
 3. **Run awesh**:
@@ -33,14 +33,17 @@ awesh> cd /var/log && analyze errors    # → Bash + AI
 
 ## Configuration
 
-### Environment Variables (`~/.aweshrc`)
+### Environment Variables
+
+Set these environment variables in your shell:
 
 ```bash
 # Required
-OPENAI_API_KEY=your_api_key_here
+export OPENAI_API_KEY=your_api_key_here
 
 # Optional
-OPENAI_MODEL=gpt-5                      # AI model to use
+export OPENAI_MODEL=gpt-5                      # AI model to use
+export VERBOSE=1                               # 0=silent, 1=show AI status+debug, 2+=more verbose
 ```
 
 ### System Prompt

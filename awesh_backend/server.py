@@ -35,6 +35,7 @@ class AweshSocketBackend:
         self.ai_ready = False
         self.socket = None
         self.current_dir = os.getcwd()  # Track current working directory
+        self.last_user_command = ""  # Track last user command for retry
         
     async def initialize(self):
         """Initialize AI components"""
@@ -126,8 +127,12 @@ class AweshSocketBackend:
             debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
-    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None) -> str:
+    async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None, retry_count: int = 0) -> str:
         """Handle AI prompt and return response"""
+        # Store last user command for retry mechanism
+        if retry_count == 0:
+            self.last_user_command = prompt
+            
         if not self.ai_ready:
             # AI not ready - if this was a bash failure, show the bash output
             if bash_result:
@@ -210,10 +215,10 @@ This allows the system to execute them automatically."""
                 # Check response type and handle accordingly
                 if "awesh:" in response:
                     debug_log("Found awesh: commands in AI response")
-                    return await self._extract_and_execute_commands(response)
+                    return await self._extract_and_execute_commands(response, retry_count)
                 elif await self._contains_questions_or_options(response):
                     debug_log("Found questions/options in AI response")
-                    return await self._handle_ai_questions(response)
+                    return await self._handle_ai_questions(response, retry_count)
                 else:
                     debug_log("Regular AI response, returning as-is")
                     output += response
@@ -228,11 +233,11 @@ This allows the system to execute them automatically."""
         except Exception as e:
             return f"❌ AI error: {e}\n"
     
-    async def _extract_and_execute_commands(self, ai_response: str) -> str:
+    async def _extract_and_execute_commands(self, ai_response: str, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them using stack approach"""
         import re
         
-        debug_log("Extracting awesh: commands from AI response")
+        debug_log(f"Extracting awesh: commands from AI response (retry {retry_count})")
         
         # Find all awesh: command patterns
         awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
@@ -261,6 +266,13 @@ This allows the system to execute them automatically."""
                 # Check if command succeeded (exit_code=0 OR has stdout)
                 if exit_code == 0 or stdout:
                     debug_log(f"Command succeeded: {command}")
+                    
+                    # If no output and this is first attempt, retry the entire process
+                    if not stdout and retry_count == 0:
+                        debug_log("⚠️  Command succeeded but no output - retrying entire process from start")
+                        await asyncio.sleep(1)  # Brief delay before retry
+                        return await self._handle_ai_prompt(self.last_user_command, None, 1)
+                    
                     return stdout if stdout else "Command executed successfully (no output)\n"
                 else:
                     # Command failed, add to failed list and try next
@@ -289,7 +301,7 @@ awesh: <command>"""
             # Check if AI provided new awesh: commands
             if "awesh:" in retry_response:
                 debug_log("AI provided alternative commands, trying them")
-                return await self._extract_and_execute_commands(retry_response)
+                return await self._extract_and_execute_commands(retry_response, 1)  # This is already a retry
             else:
                 debug_log("AI didn't provide alternative commands")
                 return f"❌ All commands failed and no alternatives provided:\n{failed_list}\n\n🤖 {retry_response}\n"
@@ -325,7 +337,7 @@ awesh: <command>"""
                 
         return False
     
-    async def _handle_ai_questions(self, ai_response: str) -> str:
+    async def _handle_ai_questions(self, ai_response: str, retry_count: int = 0) -> str:
         """Handle AI questions/options by automatically trying each option until we get a clean result"""
         import re
         
@@ -383,7 +395,7 @@ awesh: <command>"""
                 # Check if AI provided awesh: commands
                 if "awesh:" in option_response:
                     debug_log(f"✅ Option {option_number} provided commands, trying them now")
-                    result = await self._extract_and_execute_commands_with_option_context(option_response, option, option_number)
+                    result = await self._extract_and_execute_commands_with_option_context(option_response, option, option_number, retry_count)
                     
                     # Check if we got a clean result (no error indicators)
                     if not ("❌" in result or "All commands failed" in result):
@@ -407,11 +419,11 @@ awesh: <command>"""
         failed_list = "\n".join([f"- {opt}" for opt in failed_options])
         return f"❌ All options failed:\n{failed_list}\n"
     
-    async def _extract_and_execute_commands_with_option_context(self, ai_response: str, option: str, option_number: int) -> str:
+    async def _extract_and_execute_commands_with_option_context(self, ai_response: str, option: str, option_number: int, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them with enhanced debug logging for option context"""
         import re
         
-        debug_log(f"🔍 Extracting commands from option {option_number} response")
+        debug_log(f"🔍 Extracting commands from option {option_number} response (retry {retry_count})")
         
         # Find all awesh: command patterns
         awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
@@ -444,6 +456,13 @@ awesh: <command>"""
                 if exit_code == 0 or stdout:
                     debug_log(f"🎉 JACKPOT! Command {command_number} in option {option_number} succeeded: {command}")
                     debug_log(f"✨ First try success - option {option_number}, command {command_number} worked perfectly!")
+                    
+                    # If no output and this is first attempt, retry the entire process
+                    if not stdout and retry_count == 0:
+                        debug_log("⚠️  Command succeeded but no output - retrying entire process from start")
+                        await asyncio.sleep(1)  # Brief delay before retry
+                        return await self._handle_ai_prompt(self.last_user_command, None, 1)
+                    
                     return stdout if stdout else "Command executed successfully (no output)\n"
                 else:
                     # Command failed, add to failed list and try next
@@ -470,7 +489,7 @@ awesh: <command>"""
             
             if "awesh:" in clarify_response:
                 debug_log("Got commands from clarification, trying them")
-                return await self._extract_and_execute_commands(clarify_response)
+                return await self._extract_and_execute_commands(clarify_response, 1)  # This is already a retry
             else:
                 debug_log("No commands from clarification")
                 return f"🤖 {ai_response}\n\n❌ Could not determine specific actions to take.\n"

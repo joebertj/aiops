@@ -99,33 +99,34 @@ awesh> why did the build fail?             # → AI interpretation
 cd deployment/
 python3 deployment_mcp.py install
 
-# Configure your OpenAI API key in ~/.aweshrc
+# Configure your OpenAI API key
+export OPENAI_API_KEY=your_api_key_here
 awesh
 ```
 
-**🔧 Configuration (`~/.aweshrc`):**
+**🔧 Configuration:**
+Set these environment variables in your shell:
+
 ```bash
 # AI Provider Configuration
-AI_PROVIDER=openai                    # openai or openrouter
-OPENAI_MODEL=gpt-5                   # Model to use
-OPENAI_API_KEY=sk-proj-abc123...xyz  # Your OpenAI API key (truncated)
+export AI_PROVIDER=openai                    # openai or openrouter
+export OPENAI_MODEL=gpt-5                   # Model to use
+export OPENAI_API_KEY=sk-proj-abc123...xyz  # Your OpenAI API key (truncated)
 
 # OpenRouter Configuration (if using openrouter)
-OPENROUTER_API_KEY=sk-or-v1-abc...xyz # Your OpenRouter API key (truncated)
-OPENROUTER_MODEL=anthropic/claude-3-sonnet
+export OPENROUTER_API_KEY=sk-or-v1-abc...xyz # Your OpenRouter API key (truncated)
+export OPENROUTER_MODEL=anthropic/claude-3-sonnet
 
 # Display Options  
-SHOW_AI_STATUS=true    # Show AI status in prompt (default: true)
-VERBOSE=0              # Debug logging: 0=silent, 1=verbose (default: 0)
+export VERBOSE=1              # 0=silent, 1=show AI status+debug, 2+=more verbose (default: 1)
 ```
 
-**Example `~/.aweshrc`:**
+**Example configuration:**
 ```bash
-AI_PROVIDER=openai
-OPENAI_MODEL=gpt-5
-OPENAI_API_KEY=sk-proj-JrUoBu9D4iCb...T3BlbkFJMEjXf8l0w9SPKE-Rw
-SHOW_AI_STATUS=true
-VERBOSE=0
+export AI_PROVIDER=openai
+export OPENAI_MODEL=gpt-5
+export OPENAI_API_KEY=sk-proj-JrUoBu9D4iCb...T3BlbkFJMEjXf8l0w9SPKE-Rw
+export VERBOSE=1
 ```
 
 **⚠️ Testing Status:**

@@ -36,11 +36,10 @@ typedef struct {
     int backend_pid;
     int socket_fd;
     ai_status_t ai_status;
-    int show_ai_status;  // 1 = show, 0 = hide
-    int verbose;         // 1 = verbose debug, 0 = silent
+    int verbose;         // 0 = silent, 1 = show AI status + debug, 2+ = more verbose
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, AI_LOADING, 1, 0};
+static awesh_state_t state = {0, -1, AI_LOADING, 1};
 
 void load_config() {
     // Read ~/.aweshrc for configuration
@@ -66,10 +65,8 @@ void load_config() {
         char *key = line;
         char *value = equals + 1;
         
-        if (strcmp(key, "SHOW_AI_STATUS") == 0) {
-            state.show_ai_status = (strcmp(value, "false") != 0 && strcmp(value, "0") != 0);
-        } else if (strcmp(key, "VERBOSE") == 0) {
-            state.verbose = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        if (strcmp(key, "VERBOSE") == 0) {
+            state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
         }
         
         // Set all config values as environment variables for backend
@@ -374,12 +371,12 @@ void handle_awesh_command(const char* cmd) {
         }
         printf("📊 Backend PID: %d\n", state.backend_pid);
         printf("🔌 Socket FD: %d\n", state.socket_fd);
-        printf("👁️  Show AI Status: %s\n", state.show_ai_status ? "enabled" : "disabled");
+        printf("🔧 Verbose Level: %d (0=silent, 1=AI status+debug, 2+=more verbose)\n", state.verbose);
     } else if (strncmp(cmd, "awev", 4) == 0) {
         // Parse awev command and arguments
         if (strcmp(cmd, "awev") == 0) {
             // Just "awev" - show status
-            printf("🔧 Debug Logging: %s\n", state.verbose ? "enabled" : "disabled");
+            printf("🔧 Verbose Level: %d (0=silent, 1=AI status+debug, 2+=more verbose)\n", state.verbose);
         } else if (strcmp(cmd, "awev on") == 0) {
             // Enable verbose logging
             update_config_file("VERBOSE", "1");
@@ -461,11 +458,9 @@ int main() {
     load_config();
     
     // Set VERBOSE environment variable for backend
-    if (state.verbose) {
-        setenv("VERBOSE", "1", 1);
-    } else {
-        setenv("VERBOSE", "0", 1);  // Explicitly set to 0 if not verbose
-    }
+    char verbose_str[8];
+    snprintf(verbose_str, sizeof(verbose_str), "%d", state.verbose);
+    setenv("VERBOSE", verbose_str, 1);
     
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
@@ -481,7 +476,7 @@ int main() {
     
     while (1) {
         // Dynamic prompt with optional AI status
-        if (state.show_ai_status) {
+        if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
                     snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
