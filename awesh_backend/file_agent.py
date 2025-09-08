@@ -45,11 +45,12 @@ class FileAgent:
     """Intelligent file detection and context injection agent"""
     
     def __init__(self, max_file_size: int = 50000, max_total_content: int = 10000, 
-                 max_files: int = 5, enabled: bool = True):
+                 max_files: int = 5, enabled: bool = True, ai_enhance: bool = True):
         self.max_file_size = max_file_size  # Max size per file to process
         self.max_total_content = max_total_content  # Max total content to inject
         self.max_files = max_files  # Max number of files to include
         self.enabled = enabled
+        self.ai_enhance = ai_enhance  # Whether to use AI to enhance prompts
         self.current_dir = os.getcwd()
         
         # File patterns that likely indicate file references
@@ -378,23 +379,89 @@ Size: {match.size} bytes, Lines: {match.lines}
         if not file_contexts:
             return prompt
         
-        # Analyze the user's intent to provide better context
-        intent_context = self._analyze_user_intent(prompt, file_matches)
+        # Use AI to enhance the prompt for clarity (if enabled)
+        if self.ai_enhance:
+            enhanced_user_prompt = await self._ai_enhance_prompt(prompt, file_matches)
+        else:
+            enhanced_user_prompt = self._fallback_enhance_prompt(prompt, file_matches)
         
-        # Inject context before the original prompt
+        # Inject context with the AI-enhanced prompt
         enhanced_prompt = f"""FILE CONTEXT:
-{intent_context}
+The following files are relevant to the user's request:
 
 {''.join(file_contexts)}
 
-ORIGINAL USER REQUEST:
-{prompt}
+USER REQUEST (AI-Enhanced for Clarity):
+{enhanced_user_prompt}
 
-Based on the file content above, {self._get_action_guidance(prompt)}. If you provide commands, format them as:
+Please provide a comprehensive response based on the file content above. If you provide commands, format them as:
 awesh: <command>"""
         
         debug_log(f"Enhanced prompt with {len(file_matches)} files, {total_content_size} chars of content")
         return enhanced_prompt
+    
+    async def _ai_enhance_prompt(self, original_prompt: str, file_matches: List[FileMatch]) -> str:
+        """Use AI to enhance the user's prompt for better clarity and specificity"""
+        try:
+            # Import AI client here to avoid circular imports
+            from .ai_client import AweshAIClient
+            from .config import Config
+            
+            # Create a lightweight AI client for prompt enhancement
+            config = Config()
+            ai_client = AweshAIClient(config)
+            await ai_client.initialize()
+            
+            file_names = [os.path.basename(match.path) for match in file_matches]
+            file_list = ", ".join(file_names)
+            
+            enhancement_prompt = f"""You are a prompt enhancement assistant. Your job is to take a user's request about files and make it clearer and more specific.
+
+Original user request: "{original_prompt}"
+Files mentioned: {file_list}
+
+Please rewrite this request to be:
+1. More specific about what the user wants to know or do
+2. Clearer about the expected type of response
+3. More actionable for an AI assistant
+
+Examples:
+- "tell me about setup.py" → "Explain what setup.py does, including its purpose, key configuration sections, dependencies, and how it's used in the project build process"
+- "fix config" → "Analyze config.py for potential issues, bugs, or improvements and suggest specific fixes with code examples"
+- "update main" → "Review main.py and suggest specific updates or improvements, providing exact code changes where needed"
+
+Respond with ONLY the enhanced prompt, nothing else:"""
+
+            # Get AI enhancement
+            enhanced_response = ""
+            async for chunk in ai_client.process_prompt(enhancement_prompt):
+                enhanced_response += chunk
+            
+            # Clean up the response
+            enhanced_response = enhanced_response.strip()
+            
+            # If AI enhancement worked, use it; otherwise fall back to original + analysis
+            if enhanced_response and len(enhanced_response) > len(original_prompt) * 0.8:
+                debug_log(f"AI enhanced prompt: '{original_prompt}' → '{enhanced_response[:100]}...'")
+                return enhanced_response
+            else:
+                debug_log("AI enhancement failed, using fallback enhancement")
+                return self._fallback_enhance_prompt(original_prompt, file_matches)
+                
+        except Exception as e:
+            debug_log(f"AI prompt enhancement failed: {e}, using fallback")
+            return self._fallback_enhance_prompt(original_prompt, file_matches)
+    
+    def _fallback_enhance_prompt(self, original_prompt: str, file_matches: List[FileMatch]) -> str:
+        """Fallback prompt enhancement when AI enhancement fails"""
+        file_names = [os.path.basename(match.path) for match in file_matches]
+        file_list = ", ".join(file_names)
+        
+        # Use the existing intent analysis as fallback
+        intent_context = self._analyze_user_intent(original_prompt, file_matches)
+        action_guidance = self._get_action_guidance(original_prompt)
+        
+        return f"{original_prompt}\n\nSpecifically: {intent_context.lower()} Please {action_guidance}."
     
     def _analyze_user_intent(self, prompt: str, file_matches: List[FileMatch]) -> str:
         """Analyze what the user wants to do with the files"""
