@@ -541,7 +541,7 @@ int main() {
     
     // Main shell loop
     char* line;
-    char prompt[64];
+    char prompt[512];  // Increased size for full path
     
     while (1) {
         // Get username and hostname for prompt
@@ -553,6 +553,20 @@ int main() {
             strcpy(hostname, "localhost");
         }
         
+        // Get current working directory
+        char cwd[256];
+        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            strcpy(cwd, "~");
+        } else {
+            // Replace home directory with ~
+            char* home = getenv("HOME");
+            if (home && strncmp(cwd, home, strlen(home)) == 0) {
+                char temp[256];
+                snprintf(temp, sizeof(temp), "~%s", cwd + strlen(home));
+                strcpy(cwd, temp);
+            }
+        }
+        
         // Use $ for regular user, # for root (like bash)
         char prompt_char = (getuid() == 0) ? '#' : '$';
         
@@ -560,17 +574,17 @@ int main() {
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
                     break;
                 case AI_FAILED:
-                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
+                    snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
                     break;
             }
         } else {
-            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m%c ", username, hostname, prompt_char);
+            snprintf(prompt, sizeof(prompt), "\033[32m%s@\033[36m%s\033[0m:\033[34m%s\033[0m%c ", username, hostname, cwd, prompt_char);
         }
         
         // Get input with readline (supports history, editing)
