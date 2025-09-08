@@ -1,0 +1,12 @@
+# GUI Client Requirements
+# These packages work on Windows, Mac, and Linux
+
+# Core dependencies
+kubernetes==33.1.0
+
+# GUI framework (tkinter is built into Python, but these enhance it)
+tkinter-tooltip==2.0.0
+
+# Optional: For better looking GUI on different platforms
+# ttkthemes==3.2.2  # Uncomment for additional themes
+
