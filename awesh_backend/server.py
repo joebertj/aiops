@@ -160,12 +160,11 @@ class AweshSocketBackend:
                 return "❌ AI not ready yet - still loading models\n"
         
         try:
-            # Process prompt through file agent first
-            if not bash_result:  # Only for direct AI prompts, not bash failures
-                enhanced_prompt, files_found = await self.file_agent.process_prompt(prompt, self.current_dir)
-                if files_found:
-                    debug_log(f"File agent enhanced prompt with file context")
-                    prompt = enhanced_prompt
+            # Process prompt through file agent first (for ALL AI prompts)
+            enhanced_prompt, files_found = await self.file_agent.process_prompt(prompt, self.current_dir)
+            if files_found:
+                debug_log(f"File agent enhanced prompt with file context")
+                prompt = enhanced_prompt
             
             # Give AI full context
             if bash_result:
