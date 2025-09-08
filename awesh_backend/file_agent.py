@@ -366,13 +366,22 @@ class FileAgent:
                 if len(content) > remaining_space:
                     content = content[:remaining_space] + "\n... [truncated]"
                 
+                # Rich file context with metadata and analysis
+                file_type = self._analyze_file_type(match.path)
+                file_purpose = self._infer_file_purpose(match.path, content[:500])  # First 500 chars for purpose detection
+                
                 file_contexts.append(f"""
-=== File: {match.path} ===
-Match: {match.match_type} (confidence: {match.confidence:.1f})
-Size: {match.size} bytes, Lines: {match.lines}
+=== FILE ANALYSIS: {match.path} ===
+📁 Type: {file_type}
+🎯 Inferred Purpose: {file_purpose}
+📊 Match Quality: {match.match_type} (confidence: {match.confidence:.1f})
+📏 Size: {match.size} bytes ({match.lines} lines)
+🔍 Discovery Method: {match.match_type}
 
+📄 CONTENT:
 {content}
-=== End of {os.path.basename(match.path)} ===
+
+=== END OF {os.path.basename(match.path).upper()} ANALYSIS ===
 """)
                 total_content_size += len(content)
         
@@ -415,22 +424,28 @@ awesh: <command>"""
             file_names = [os.path.basename(match.path) for match in file_matches]
             file_list = ", ".join(file_names)
             
-            enhancement_prompt = f"""You are a prompt enhancement assistant. Your job is to take a user's request about files and make it clearer and more specific.
+            enhancement_prompt = f"""You are an expert file analysis assistant. Your job is to transform user requests about files into comprehensive, specific instructions that will produce the most helpful response possible.
 
 Original user request: "{original_prompt}"
-Files mentioned: {file_list}
+Files involved: {file_list}
 
-Please rewrite this request to be:
-1. More specific about what the user wants to know or do
-2. Clearer about the expected type of response
-3. More actionable for an AI assistant
+Transform this into a detailed, specific request that:
+1. Clearly states what the user wants to achieve with these files
+2. Specifies the type and depth of analysis needed
+3. Requests actionable insights, explanations, or commands
+4. Considers the file's role in the broader project context
+5. Asks for both immediate understanding and practical next steps
 
-Examples:
-- "tell me about setup.py" → "Explain what setup.py does, including its purpose, key configuration sections, dependencies, and how it's used in the project build process"
-- "fix config" → "Analyze config.py for potential issues, bugs, or improvements and suggest specific fixes with code examples"
-- "update main" → "Review main.py and suggest specific updates or improvements, providing exact code changes where needed"
+Examples of transformations:
+- "tell me about setup.py" → "Provide a comprehensive analysis of setup.py: explain its purpose in the Python packaging system, break down each configuration section (dependencies, entry points, metadata), identify any potential issues or improvements, and explain how this setup relates to the overall project structure and deployment process"
 
-Respond with ONLY the enhanced prompt, nothing else:"""
+- "fix config" → "Thoroughly analyze config.py for potential issues: check for security vulnerabilities, configuration errors, missing error handling, inefficient patterns, and compatibility issues. Provide specific fixes with exact code examples, explain the reasoning behind each fix, and suggest best practices for configuration management"
+
+- "update main" → "Review main.py comprehensively: analyze the current architecture and flow, identify areas for improvement (performance, maintainability, error handling), suggest specific modernizations or refactoring opportunities with exact code changes, and recommend testing strategies for the updates"
+
+- "run tests" → "Analyze the test files to understand the testing strategy, explain how to execute the tests, identify any missing test coverage, suggest improvements to the test suite, and provide commands to run tests with proper reporting"
+
+Create a rich, detailed prompt that will help the user truly understand and work effectively with their files:"""
 
             # Get AI enhancement
             enhanced_response = ""
@@ -499,6 +514,155 @@ Respond with ONLY the enhanced prompt, nothing else:"""
             return "analyze the code and suggest specific improvements or refactoring opportunities"
         else:
             return "provide actionable insights, explanations, or commands based on the file content"
+    
+    def _analyze_file_type(self, file_path: str) -> str:
+        """Analyze and categorize the file type with rich context"""
+        ext = os.path.splitext(file_path)[1].lower()
+        basename = os.path.basename(file_path).lower()
+        
+        # Configuration files
+        if basename in ['config.py', 'settings.py', 'config.yml', 'config.yaml', '.env', 'config.ini']:
+            return "Configuration File - Controls application behavior and settings"
+        elif ext in ['.ini', '.conf', '.cfg', '.toml'] or 'config' in basename:
+            return "Configuration File - System or application configuration"
+        
+        # Build and deployment files  
+        elif basename in ['setup.py', 'pyproject.toml', 'requirements.txt', 'package.json', 'cargo.toml', 'go.mod']:
+            return "Build/Package Definition - Defines dependencies and build process"
+        elif basename in ['dockerfile', 'docker-compose.yml', 'makefile']:
+            return "Build/Deployment Script - Automates build and deployment processes"
+        
+        # Entry points and main files
+        elif basename in ['main.py', '__main__.py', 'app.py', 'server.py', 'index.js', 'main.go', 'main.rs']:
+            return "Application Entry Point - Main executable or server entry point"
+        
+        # Test files
+        elif 'test' in basename or basename.startswith('test_') or ext == '.test':
+            return "Test File - Contains automated tests for code validation"
+        
+        # Documentation
+        elif ext in ['.md', '.rst', '.txt'] and ('readme' in basename or 'doc' in basename):
+            return "Documentation - Project information and usage instructions"
+        
+        # Source code by language
+        elif ext == '.py':
+            return "Python Source Code - Python module or script"
+        elif ext in ['.js', '.ts', '.jsx', '.tsx']:
+            return "JavaScript/TypeScript Source - Web application code"
+        elif ext in ['.go']:
+            return "Go Source Code - Go programming language module"
+        elif ext in ['.rs']:
+            return "Rust Source Code - Rust programming language module"
+        elif ext in ['.c', '.cpp', '.h', '.hpp']:
+            return "C/C++ Source Code - System-level programming code"
+        elif ext in ['.java']:
+            return "Java Source Code - Java programming language class"
+        elif ext in ['.rb']:
+            return "Ruby Source Code - Ruby programming language script"
+        elif ext in ['.php']:
+            return "PHP Source Code - Server-side web programming script"
+        elif ext in ['.sh', '.bash']:
+            return "Shell Script - Command-line automation script"
+        
+        # Data and config formats
+        elif ext in ['.json']:
+            return "JSON Data - Structured data interchange format"
+        elif ext in ['.yml', '.yaml']:
+            return "YAML Configuration - Human-readable data serialization"
+        elif ext in ['.xml']:
+            return "XML Data - Markup language for structured data"
+        elif ext in ['.csv']:
+            return "CSV Data - Comma-separated values data file"
+        
+        # Web files
+        elif ext in ['.html', '.htm']:
+            return "HTML Document - Web page markup"
+        elif ext in ['.css', '.scss', '.sass']:
+            return "Stylesheet - Web page styling definitions"
+        
+        # Logs and temporary
+        elif ext in ['.log']:
+            return "Log File - Application or system event log"
+        elif ext in ['.tmp', '.temp']:
+            return "Temporary File - Temporary data storage"
+        
+        else:
+            return f"File ({ext or 'no extension'}) - General purpose file"
+    
+    def _infer_file_purpose(self, file_path: str, content_preview: str) -> str:
+        """Infer the specific purpose of the file from its content"""
+        basename = os.path.basename(file_path).lower()
+        content_lower = content_preview.lower()
+        
+        # Specific file patterns
+        if basename == 'setup.py':
+            if 'setuptools' in content_lower:
+                return "Python package setup and distribution configuration"
+            else:
+                return "Python project setup script"
+        
+        elif basename in ['config.py', 'settings.py']:
+            if 'database' in content_lower:
+                return "Database and application configuration settings"
+            elif 'api' in content_lower:
+                return "API configuration and service settings"
+            else:
+                return "Application configuration and environment settings"
+        
+        elif basename == 'main.py':
+            if 'flask' in content_lower or 'app.run' in content_lower:
+                return "Flask web application entry point"
+            elif 'fastapi' in content_lower:
+                return "FastAPI web service entry point"
+            elif 'asyncio' in content_lower:
+                return "Asynchronous Python application entry point"
+            elif 'argparse' in content_lower:
+                return "Command-line application entry point"
+            else:
+                return "Python application main execution entry point"
+        
+        elif basename == 'server.py':
+            if 'socket' in content_lower:
+                return "Network server implementation with socket communication"
+            elif 'http' in content_lower or 'web' in content_lower:
+                return "HTTP web server implementation"
+            else:
+                return "Server application core logic"
+        
+        elif 'test' in basename:
+            if 'unittest' in content_lower:
+                return "Unit tests using Python unittest framework"
+            elif 'pytest' in content_lower:
+                return "Unit tests using pytest framework"
+            else:
+                return "Automated test suite for code validation"
+        
+        elif basename == 'dockerfile':
+            return "Container image build instructions and environment setup"
+        
+        elif basename == 'requirements.txt':
+            return "Python package dependencies and version specifications"
+        
+        elif basename.endswith('.md'):
+            if 'readme' in basename:
+                return "Project documentation, setup instructions, and usage guide"
+            else:
+                return "Documentation and project information"
+        
+        # Content-based inference
+        elif 'class ' in content_lower and 'def ' in content_lower:
+            return "Object-oriented code with class definitions and methods"
+        elif 'function' in content_lower or 'def ' in content_lower:
+            return "Function definitions and procedural code logic"
+        elif 'import ' in content_lower:
+            return "Module with external dependencies and library usage"
+        elif 'api' in content_lower and ('endpoint' in content_lower or 'route' in content_lower):
+            return "API endpoint definitions and request handling"
+        elif 'database' in content_lower or 'sql' in content_lower:
+            return "Database interaction and data management code"
+        
+        else:
+            return "General purpose code or data file"
     
     async def _extract_file_content(self, match: FileMatch) -> str:
         """Extract relevant content from a file"""
