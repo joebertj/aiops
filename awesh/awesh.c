@@ -447,6 +447,29 @@ void handle_interactive_bash(const char* cmd) {
     }
 }
 
+void handle_bash_with_ai_fallback(const char* cmd) {
+    // Try bash command directly first
+    int result = system(cmd);
+    
+    // If command succeeded, we're done
+    if (result == 0) {
+        return;
+    }
+    
+    // If command failed and we have AI backend available, try AI assistance
+    if (state.socket_fd >= 0 && state.ai_status == AI_READY) {
+        if (state.verbose >= 1) {
+            printf("Command failed (exit %d), trying AI assistance...\n", result);
+        }
+        send_command(cmd);
+    } else {
+        // No AI available, just show the failure
+        if (state.verbose >= 1) {
+            printf("Command failed with exit code: %d\n", result);
+        }
+    }
+}
+
 void handle_builtin(const char* cmd) {
     if (strcmp(cmd, "exit") == 0) {
         cleanup_and_exit(0);
@@ -540,7 +563,8 @@ int main() {
         } else if (is_interactive_bash_command(line)) {
             handle_interactive_bash(line);
         } else {
-            send_command(line);
+            // Try bash directly first, send to backend only on failure or for AI help
+            handle_bash_with_ai_fallback(line);
         }
         
         free(line);
