@@ -544,21 +544,21 @@ int main() {
     char prompt[64];
     
     while (1) {
-        // Dynamic prompt with optional AI status
+        // Dynamic prompt with optional AI status and colors
         if (state.verbose >= 1) {
             switch (state.ai_status) {
                 case AI_LOADING:
-                    snprintf(prompt, sizeof(prompt), "AI loading: awesh> ");
+                    snprintf(prompt, sizeof(prompt), "\033[33mAI loading:\033[0m \033[36mawesh>\033[0m ");
                     break;
                 case AI_READY:
-                    snprintf(prompt, sizeof(prompt), "AI ready: awesh> ");
+                    snprintf(prompt, sizeof(prompt), "\033[32mAI ready:\033[0m \033[36mawesh>\033[0m ");
                     break;
                 case AI_FAILED:
-                    snprintf(prompt, sizeof(prompt), "awesh> ");
+                    snprintf(prompt, sizeof(prompt), "\033[36mawesh>\033[0m ");
                     break;
             }
         } else {
-            snprintf(prompt, sizeof(prompt), "awesh> ");
+            snprintf(prompt, sizeof(prompt), "\033[36mawesh>\033[0m ");
         }
         
         // Get input with readline (supports history, editing)
