@@ -87,6 +87,11 @@ class AweshSocketBackend:
                     self.bash_executor.set_cwd(self.current_dir)
                 return "OK"  # Send acknowledgment
                 
+            # Handle AI status check from frontend
+            if command == 'STATUS':
+                debug_log(f"Status check: AI ready = {self.ai_ready}")
+                return "AI_READY" if self.ai_ready else "AI_LOADING"
+                
             # Handle bash failure context from frontend
             if command.startswith('BASH_FAILED:'):
                 parts = command.split(':', 3)  # BASH_FAILED:exit_code:original_cmd:temp_file
