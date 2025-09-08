@@ -570,6 +570,12 @@ int main() {
         state.ai_status = AI_FAILED;
     }
     
+    // Give backend time to initialize, then check AI status
+    sleep(1);
+    if (state.socket_fd >= 0) {
+        check_ai_status();
+    }
+    
     // Main shell loop
     char* line;
     char prompt[512];  // Increased size for full path
