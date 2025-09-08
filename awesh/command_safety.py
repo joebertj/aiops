@@ -35,7 +35,7 @@ class CommandSafetyFilter:
         }
         
         # Commands that require confirmation
-        self.requires_confirmation = {
+        self.confirmation_required_commands = {
             # File operations
             'rm', 'rmdir', 'mv', 'cp -r', 'rsync --delete',
             
@@ -113,7 +113,7 @@ class CommandSafetyFilter:
         command_lower = command.lower().strip()
         
         # Check if command starts with any that require confirmation
-        for confirm_cmd in self.requires_confirmation:
+        for confirm_cmd in self.confirmation_required_commands:
             if command_lower.startswith(confirm_cmd.lower()):
                 return True, f"Potentially destructive command: {confirm_cmd}"
         
