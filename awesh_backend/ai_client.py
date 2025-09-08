@@ -39,20 +39,22 @@ class AweshAIClient:
             from openai import AsyncOpenAI
             
         # Initialize OpenAI client (supports OpenRouter)
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
+        ai_provider = os.getenv('AI_PROVIDER', 'openai')
         
-        # Check if using OpenRouter
-        base_url = os.getenv('OPENAI_BASE_URL')
-        if base_url:
-            # Using OpenRouter or other OpenAI-compatible API
+        if ai_provider == 'openrouter':
+            # Using OpenRouter
+            api_key = os.getenv('OPENROUTER_API_KEY')
+            if not api_key:
+                raise ValueError("OPENROUTER_API_KEY environment variable not set")
             self.client = AsyncOpenAI(
                 api_key=api_key,
-                base_url=base_url
+                base_url="https://openrouter.ai/api/v1"
             )
         else:
             # Using standard OpenAI
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable not set")
             self.client = AsyncOpenAI(api_key=api_key)
         
         # Load system prompt (this can be slow if creating default)
