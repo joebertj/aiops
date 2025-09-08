@@ -482,7 +482,7 @@ void handle_bash_with_ai_fallback(const char* cmd) {
             close(fd);
             
             char bash_cmd[MAX_CMD_LEN + 100];
-            snprintf(bash_cmd, sizeof(bash_cmd), "%s > %s 2>&1", cmd, temp_file);
+            snprintf(bash_cmd, sizeof(bash_cmd), "%s >%s 2>&1", cmd, temp_file);
             int result = system(bash_cmd);
             
             if (result == 0) {
@@ -495,6 +495,12 @@ void handle_bash_with_ai_fallback(const char* cmd) {
                 // Bash failed - send command and output to AI as context
                 if (state.verbose >= 1) {
                     printf("Command failed (exit %d), trying AI assistance...\n", result);
+                    // Debug: show what was captured
+                    printf("🔧 Error output captured in temp file:\n");
+                    char cat_debug[200];
+                    snprintf(cat_debug, sizeof(cat_debug), "cat %s", temp_file);
+                    system(cat_debug);
+                    printf("🔧 End of captured output\n");
                 }
                 
                 // Send command with bash failure context to backend
