@@ -33,13 +33,17 @@ class AweshAIClient:
         
     async def initialize(self):
         """Initialize the AI client and load system prompt"""
+        debug_log("Starting AI client initialization...")
+        
         # Import OpenAI when actually needed
         global AsyncOpenAI
         if AsyncOpenAI is None:
+            debug_log("Importing AsyncOpenAI...")
             from openai import AsyncOpenAI
             
         # Initialize OpenAI client (supports OpenRouter)
         ai_provider = os.getenv('AI_PROVIDER', 'openai')
+        debug_log(f"AI Provider: {ai_provider}")
         
         if ai_provider == 'openrouter':
             # Using OpenRouter
@@ -47,19 +51,25 @@ class AweshAIClient:
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY environment variable not set")
             base_url = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+            debug_log(f"Creating OpenRouter client with base_url: {base_url}")
             self.client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url
             )
+            debug_log("OpenRouter client created successfully")
         else:
             # Using standard OpenAI
             api_key = os.getenv('OPENAI_API_KEY')
             if not api_key:
                 raise ValueError("OPENAI_API_KEY environment variable not set")
+            debug_log("Creating OpenAI client...")
             self.client = AsyncOpenAI(api_key=api_key)
+            debug_log("OpenAI client created successfully")
         
         # Load system prompt (this can be slow if creating default)
+        debug_log("Loading system prompt...")
         await self._load_system_prompt()
+        debug_log("System prompt loaded")
         
         debug_log("AI client initialization completed")
         
