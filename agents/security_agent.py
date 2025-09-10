@@ -11,6 +11,8 @@ It uses the existing security implementations from awesh for consistency and bes
 import sys
 import os
 import time
+import hashlib
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
 from .base_agent import BaseAgent, AgentResult
@@ -50,6 +52,9 @@ class SecurityAgent(BaseAgent):
         self.command_safety = CommandSafetyFilter() if CommandSafetyFilter else None
         self.sensitive_filter = SensitiveDataFilter() if SensitiveDataFilter else None
         self.policy_engine = AweshPolicyEngine(Path(policy_path)) if AweshPolicyEngine and policy_path else None
+        
+        # Initialize prompt integrity checking
+        self.prompt_hashes = self._get_expected_prompt_hashes()
         
         # Fallback patterns if imports failed
         if not self.command_safety or not self.sensitive_filter:

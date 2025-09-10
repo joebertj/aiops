@@ -12,8 +12,19 @@
 #include <errno.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <time.h>
+#include <sys/time.h>
 
 static char socket_path[512];
+
+// Performance optimization: Cache for prompt data
+static struct {
+    char git_branch[64];
+    char k8s_context[64];
+    char k8s_namespace[64];
+    time_t last_update;
+    int valid;
+} prompt_cache = {0};
 
 void init_socket_path() {
     const char* home = getenv("HOME");
@@ -22,6 +33,58 @@ void init_socket_path() {
     } else {
         strcpy(socket_path, "/tmp/awesh.sock");  // fallback
     }
+}
+
+// Performance monitoring (D³ principle)
+long get_time_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+void debug_perf(const char* operation, long start_time) {
+    int verbose = atoi(getenv("VERBOSE") ? getenv("VERBOSE") : "1");
+    if (verbose >= 2) {
+        long duration = get_time_ms() - start_time;
+        fprintf(stderr, "🐛 DEBUG: %s took %ldms\n", operation, duration);
+    }
+}
+
+// Optimized prompt data fetching with caching
+void get_prompt_data_cached(char* git_branch, char* k8s_context, char* k8s_namespace, size_t size) {
+    time_t now = time(NULL);
+    
+    // Check if cache is valid (5 second TTL)
+    if (prompt_cache.valid && (now - prompt_cache.last_update) < 5) {
+        strncpy(git_branch, prompt_cache.git_branch, size - 1);
+        strncpy(k8s_context, prompt_cache.k8s_context, size - 1);
+        strncpy(k8s_namespace, prompt_cache.k8s_namespace, size - 1);
+        git_branch[size - 1] = '\0';
+        k8s_context[size - 1] = '\0';
+        k8s_namespace[size - 1] = '\0';
+        return;
+    }
+    
+    // Cache miss - fetch fresh data
+    long fetch_start = get_time_ms();
+    
+    get_git_branch(prompt_cache.git_branch, sizeof(prompt_cache.git_branch));
+    get_kubectl_context(prompt_cache.k8s_context, sizeof(prompt_cache.k8s_context));
+    get_kubectl_namespace(prompt_cache.k8s_namespace, sizeof(prompt_cache.k8s_namespace));
+    
+    // Copy to output
+    strncpy(git_branch, prompt_cache.git_branch, size - 1);
+    strncpy(k8s_context, prompt_cache.k8s_context, size - 1);
+    strncpy(k8s_namespace, prompt_cache.k8s_namespace, size - 1);
+    git_branch[size - 1] = '\0';
+    k8s_context[size - 1] = '\0';
+    k8s_namespace[size - 1] = '\0';
+    
+    // Update cache
+    prompt_cache.last_update = now;
+    prompt_cache.valid = 1;
+    
+    debug_perf("prompt data fetch (cache miss)", fetch_start);
 }
 
 // Helper function to get git branch
@@ -693,16 +756,14 @@ int main() {
         char* user_color = (getuid() == 0) ? "\033[31m" : "\033[32m";  // Red for root, green for user
         
         // Build secure dynamic prompt directly in C (no external file dependencies)
+        long prompt_start = get_time_ms();
+        
         char git_branch[64] = "";
         char k8s_context[64] = "";
         char k8s_namespace[64] = "";
         
-        // Get git branch
-        get_git_branch(git_branch, sizeof(git_branch));
-        
-        // Get kubectl context and namespace
-        get_kubectl_context(k8s_context, sizeof(k8s_context));
-        get_kubectl_namespace(k8s_namespace, sizeof(k8s_namespace));
+        // Get prompt data with caching optimization
+        get_prompt_data_cached(git_branch, k8s_context, k8s_namespace, 64);
         
         // Build context parts string
         char context_parts[256] = "";
@@ -734,6 +795,9 @@ int main() {
                 snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
         }
+        
+        // Debug total prompt generation time
+        debug_perf("total prompt generation", prompt_start);
         
         // Get input with readline (supports history, editing)
         line = readline(prompt);
