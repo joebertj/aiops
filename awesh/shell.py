@@ -54,8 +54,12 @@ class AweshShell:
         print()
         
         # Show initial prompt immediately
+        try:
+            prompt = self.prompt_manager.get_prompt(False, "")
+        except Exception:
+            prompt = self.prompt_manager.get_simple_prompt(False)
         import sys
-        sys.stdout.write("AI:joebert@maximaal:~/AI/aiops\n>")
+        sys.stdout.write(prompt)
         sys.stdout.flush()
         
         # Simple frontend loop - instant
@@ -92,10 +96,13 @@ class AweshShell:
             parent_sock, child_sock = socket.socketpair()
             parent_sock.setblocking(False)  # Non-blocking socket
             
-            # Start backend subprocess
+            # Start backend subprocess using virtual environment Python
             backend_script = Path(__file__).parent / "backend.py"
+            venv_python = Path(__file__).parent.parent / "venv" / "bin" / "python3"
+            python_executable = str(venv_python) if venv_python.exists() else sys.executable
+            
             self.backend_process = subprocess.Popen([
-                sys.executable, str(backend_script)
+                python_executable, str(backend_script)
             ], stdin=child_sock.fileno(), stdout=child_sock.fileno(), 
                stderr=subprocess.PIPE)
             

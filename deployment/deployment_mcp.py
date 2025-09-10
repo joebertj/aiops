@@ -78,6 +78,13 @@ def get_venv_pip():
     else:  # Unix/Linux/macOS
         return VENV_DIR / "bin" / "pip"
 
+def get_venv_python():
+    """Get the Python executable path from venv"""
+    if os.name == 'nt':  # Windows
+        return VENV_DIR / "Scripts" / "python.exe"
+    else:  # Unix/Linux/macOS
+        return VENV_DIR / "bin" / "python3"
+
 def syntax_check():
     """Check C and Python syntax"""
     log("🔍 Checking C syntax...")

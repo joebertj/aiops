@@ -9,6 +9,8 @@ cd aiops/deployment/
 python3 deployment_mcp.py clean_install
 ```
 
+**🐍 Virtual Environment:** The installation automatically creates and uses a Python virtual environment, ensuring clean dependency isolation and reproducible deployments.
+
 ## Manual Installation
 
 ### Prerequisites
@@ -39,11 +41,16 @@ sudo yum install python3 python3-pip readline-devel
    cd aiops
    ```
 
-2. **Run the deployment MCP:**
+2. **Run the deployment MCP (with virtual environment):**
    ```bash
    cd deployment/
    python3 deployment_mcp.py clean_install
    ```
+   
+   This automatically:
+   - Creates a Python virtual environment
+   - Installs all dependencies in isolation
+   - Builds and deploys awesh using venv Python
 
 3. **Restart your terminal** or run:
    ```bash
@@ -126,12 +133,19 @@ AI ready: awesh> how do I find large files?
 - Restart your terminal or run `source ~/.bashrc`
 
 ### Backend connection failed
-- Check if Python dependencies are installed: `pip3 list | grep awesh`
+- Check if Python dependencies are installed: `./venv/bin/pip list | grep awesh`
 - Verify OpenAI API key in `~/.aweshrc`
+- Ensure virtual environment is being used: `ps aux | grep awesh` should show `venv/bin/python3`
 
 ### Compilation errors
 - Install readline headers: `sudo apt install libreadline-dev`
 - Install build tools: `sudo apt install build-essential`
+
+### Virtual environment issues
+- **Virtual environment not found**: Run `python3 deployment/deployment_mcp.py setup_venv`
+- **Dependencies missing**: Run `python3 deployment/deployment_mcp.py install_deps`
+- **Wrong Python executable**: Check `ps aux | grep awesh` shows `venv/bin/python3`
+- **Permission errors**: Ensure `venv/` directory is owned by your user
 
 ## Uninstall
 
@@ -139,12 +153,14 @@ AI ready: awesh> how do I find large files?
 cd deployment/
 python3 deployment_mcp.py kill_force
 rm ~/.local/bin/awesh
-pip3 uninstall awesh-backend
+./venv/bin/pip uninstall awesh-backend  # Use venv pip
 rm ~/.aweshrc ~/.awesh.sock
+rm -rf venv/  # Remove virtual environment
 ```
 
 ## Support
 
 - **Documentation**: [README.md](README.md)
+- **Virtual Environment**: [VENV_SETUP.md](VENV_SETUP.md) - Detailed venv setup and troubleshooting
 - **Issues**: [GitHub Issues](https://github.com/joebertj/aiops/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/joebertj/aiops/discussions)

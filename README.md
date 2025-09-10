@@ -95,14 +95,23 @@ awesh> why did the build fail?             # → AI interpretation
 
 **🔧 Installation:**
 ```bash
-# Use deployment MCP for installation (git pull + deploy)
+# Use deployment MCP for clean installation with virtual environment
 cd deployment/
-python3 deployment_mcp.py install
+python3 deployment_mcp.py clean_install
 
 # Configure your OpenAI API key
 export OPENAI_API_KEY=your_api_key_here
 awesh
 ```
+
+**🐍 Virtual Environment Enforcement:**
+AIOps automatically uses a Python virtual environment for all operations, ensuring:
+- **Dependency isolation** from system Python packages
+- **Consistent environments** across different systems  
+- **Clean deployments** with reproducible setups
+- **No conflicts** with system-installed packages
+
+The deployment script automatically creates and manages the virtual environment, installing all dependencies in isolation. See [VENV_SETUP.md](VENV_SETUP.md) for detailed information.
 
 **🔧 Configuration:**
 Set these environment variables in your shell:
@@ -197,10 +206,16 @@ aiops/
 ### Install awesh
 
 ```bash
-# Use deployment MCP for clean installation
+# Use deployment MCP for clean installation with virtual environment
 cd deployment/
 python3 deployment_mcp.py clean_install
 ```
+
+**🐍 Virtual Environment Benefits:**
+- **Automatic setup**: Creates isolated Python environment
+- **Dependency management**: Installs all packages in venv
+- **Clean deployment**: No system Python conflicts
+- **Reproducible builds**: Same environment everywhere
 
 ### Try Kubernetes MCP Server
 
