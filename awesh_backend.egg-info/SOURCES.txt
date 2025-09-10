@@ -1,6 +1,13 @@
 LICENSE
 README.md
 setup.py
+agents/__init__.py
+agents/agent_processor.py
+agents/base_agent.py
+agents/command_router_agent.py
+agents/kubernetes_agent.py
+agents/response_parser.py
+agents/security_agent.py
 awesh/__init__.py
 awesh/ai_client.py
 awesh/audit_logger.py

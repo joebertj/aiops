@@ -420,3 +420,6 @@ class AweshAuditLogger:
             self.logger.error(f"Failed to read security alerts: {e}")
             
         return alerts
+
+
+
