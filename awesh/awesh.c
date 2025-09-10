@@ -1376,9 +1376,9 @@ int main() {
             }
         }
         
-        // Generate secure prompt with integrated security status
-        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s\n> ",
-                 backend_emoji, security_emoji, user_color, username, hostname, cwd, context_parts, security_context);
+        // Generate secure prompt with integrated security status (security comes right after user@host)
+        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s%s\n> ",
+                 backend_emoji, security_emoji, user_color, username, hostname, cwd, security_context, context_parts);
         
         // Debug total prompt generation time
         debug_perf("total prompt generation", prompt_start);
