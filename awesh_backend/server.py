@@ -124,6 +124,12 @@ class AweshSocketBackend:
             # Note: cd and pwd should be handled by frontend as builtins
             
             
+            # Handle security agent special commands (bypass all agents)
+            if command.startswith("RAG_ADD_PROCESS:"):
+                return await self._add_process_to_rag(command)
+            elif command.startswith("PROCESS_ANALYSIS:"):
+                return await self._handle_rag_analysis_5min()
+            
             # Bash execution handled by C frontend - send everything to AI
             debug_log("process_command: Sending to AI (bash handled by frontend)")
             return await self._handle_ai_prompt(command)
@@ -132,6 +138,57 @@ class AweshSocketBackend:
             debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
+    async def _add_process_to_rag(self, command: str) -> str:
+        """Add process data to RAG system (security agent only)"""
+        try:
+            # Extract process data from command
+            process_data = command[len("RAG_ADD_PROCESS:"):]
+            debug_log(f"Adding process data to RAG: {len(process_data)} chars")
+            
+            # TODO: Implement RAG storage
+            # For now, just acknowledge receipt
+            return "RAG_ADDED"
+        except Exception as e:
+            debug_log(f"Error adding to RAG: {e}")
+            return "RAG_ERROR"
+    
+    async def _handle_rag_analysis_5min(self) -> str:
+        """Analyze latest 5 minutes of RAG data for suspicious processes (security agent only)"""
+        try:
+            if not self.ai_ready:
+                return "AI_NOT_READY"
+            
+            debug_log("Performing AI analysis on RAG data")
+            
+            # TODO: Get latest 5 minutes of RAG data
+            # For now, use a simple prompt
+            analysis_prompt = """Analyze the following process data for suspicious activity. Look for:
+1. Unusual process names or paths
+2. Processes running from suspicious locations
+3. Processes with suspicious command line arguments
+4. Processes that might be malware or unauthorized software
+
+Process data: [RAG_DATA_PLACEHOLDER]
+
+Respond with:
+- "CLEAN" if no suspicious processes found
+- "SUSPICIOUS: <process_id> <reason>" for each suspicious process found
+"""
+            
+            # Use direct AI access (bypass all agents)
+            response = await self.ai_client.get_ai_response(analysis_prompt)
+            
+            if response and "SUSPICIOUS:" in response:
+                debug_log(f"AI detected suspicious activity: {response}")
+                return response
+            else:
+                debug_log("AI analysis: No suspicious activity detected")
+                return "CLEAN"
+                
+        except Exception as e:
+            debug_log(f"Error in RAG analysis: {e}")
+            return "ANALYSIS_ERROR"
+
     async def _handle_ai_prompt(self, prompt: str, bash_result: dict = None, retry_count: int = 0) -> str:
         """Handle AI prompt and return response"""
         # Store last user command for retry mechanism
