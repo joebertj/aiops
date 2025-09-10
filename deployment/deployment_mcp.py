@@ -187,10 +187,10 @@ def kill_processes(force=False):
     killed_processes = []
     
     try:
-        # Find and kill awesh processes
+        # Find and kill awesh processes by name
         for proc in psutil.process_iter(['pid', 'name']):
             try:
-                if proc.info['name'] in ['awesh', 'awesh_backend']:
+                if proc.info['name'] in ['awesh', 'awesh_backend', 'awesh_sec']:
                     pid = proc.info['pid']
                     name = proc.info['name']
                     
@@ -200,6 +200,30 @@ def kill_processes(force=False):
                     else:
                         os.kill(pid, signal.SIGTERM)
                         log(f"🛑 Terminated {name} (PID: {pid})")
+                    
+                    killed_processes.append(pid)
+            
+            except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
+                continue
+        
+        # Also find and kill processes by command line (for stealth processes)
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = proc.info.get('cmdline', [])
+                if cmdline and any('awesh' in arg for arg in cmdline):
+                    pid = proc.info['pid']
+                    name = proc.info['name']
+                    
+                    # Skip if already killed
+                    if pid in killed_processes:
+                        continue
+                    
+                    if force:
+                        os.kill(pid, signal.SIGKILL)
+                        log(f"💀 Force killed {name} (PID: {pid}) - awesh process")
+                    else:
+                        os.kill(pid, signal.SIGTERM)
+                        log(f"🛑 Terminated {name} (PID: {pid}) - awesh process")
                     
                     killed_processes.append(pid)
             
@@ -238,6 +262,7 @@ def kill_processes(force=False):
         # Clean up socket files
         socket_paths = [
             Path.home() / ".awesh.sock",
+            Path.home() / ".awesh_security_agent.sock",
             Path("/tmp/awesh.sock")
         ]
         
