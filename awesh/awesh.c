@@ -957,7 +957,7 @@ int main() {
         printf("⚠️ Warning: Could not initialize Security Agent socket\n");
     }
     
-    // Start Security Agent as separate process
+    // Start Security Agent as separate process (non-blocking)
     pid_t security_agent_pid = fork();
     if (security_agent_pid == 0) {
         // Child: start Security Agent
@@ -968,6 +968,7 @@ int main() {
         printf("⚠️ Warning: Could not start Security Agent\n");
     } else {
         printf("🔒 Security Agent started (PID: %d)\n", security_agent_pid);
+        // Don't wait for Security Agent - let it initialize in background
     }
     
     // Set VERBOSE environment variable for backend
@@ -975,25 +976,29 @@ int main() {
     snprintf(verbose_str, sizeof(verbose_str), "%d", state.verbose);
     setenv("VERBOSE", verbose_str, 1);
     
-    // Start backend silently
+    // Show welcome message immediately
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
     printf("💡 Type 'aweh' to see available control commands\n");
     
-    if (start_backend() != 0) {
+    // Start backend in background (non-blocking)
+    pid_t backend_pid = fork();
+    if (backend_pid == 0) {
+        // Child: start backend
+        if (start_backend() != 0) {
+            exit(1);
+        }
+        exit(0);
+    } else if (backend_pid > 0) {
+        state.backend_pid = backend_pid;
+        // Don't wait for backend - let it initialize in background
+    } else {
+        printf("⚠️ Warning: Could not start backend\n");
         state.ai_status = AI_FAILED;
     }
     
-    // Give backend time to initialize, then check AI status
-    sleep(1);
-    if (state.socket_fd >= 0) {
-        check_ai_status();
-    }
-    
-    // Main shell loop
+    // Main shell loop - start immediately, don't wait for backend
     char* line;
     char prompt[1024];  // Increased size for full path and long context
-    
-    // Initial prompt will be generated in the main loop
     
     while (1) {
         // Get username and hostname for prompt
@@ -1069,6 +1074,35 @@ int main() {
         
         // Debug total prompt generation time
         debug_perf("total prompt generation", prompt_start);
+        
+        // Non-blocking AI status check (only if backend not connected yet)
+        if (state.socket_fd < 0 && state.backend_pid > 0) {
+            // Try to connect to backend socket (non-blocking)
+            const char* home = getenv("HOME");
+            if (home) {
+                char socket_path[512];
+                snprintf(socket_path, sizeof(socket_path), "%s/.awesh_backend.sock", home);
+                
+                int test_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+                if (test_fd >= 0) {
+                    struct sockaddr_un addr;
+                    memset(&addr, 0, sizeof(addr));
+                    addr.sun_family = AF_UNIX;
+                    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+                    
+                    // Non-blocking connect attempt
+                    fcntl(test_fd, F_SETFL, O_NONBLOCK);
+                    if (connect(test_fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+                        // Backend is ready!
+                        state.socket_fd = test_fd;
+                        check_ai_status();
+                    } else {
+                        // Backend not ready yet, close test socket
+                        close(test_fd);
+                    }
+                }
+            }
+        }
         
         // Get input with readline (supports history, editing)
         line = readline(prompt);
