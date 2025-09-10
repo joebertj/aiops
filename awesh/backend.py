@@ -431,8 +431,108 @@ Your response:"""
         except Exception as e:
             return f"awesh_edit: Error processing query: {e}"
     
+    async def _add_process_to_rag(self, ps_output: str) -> None:
+        """Add process output to RAG system (non-blocking)"""
+        try:
+            # Import RAG system
+            from rag_system import get_rag_system
+
+            # Get RAG system instance
+            rag = get_rag_system()
+
+            # Add current process output to RAG system with timestamp
+            import time
+            timestamp = int(time.time())
+            doc_id = f"process_scan_{timestamp}"
+
+            # Add to RAG system
+            rag.add_document(
+                doc_id=doc_id,
+                content=ps_output,
+                metadata={
+                    "type": "process_scan",
+                    "timestamp": timestamp,
+                    "scan_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "process_count": len(ps_output.split('\n')) - 1  # Approximate process count
+                }
+            )
+
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: RAG addition error: {e}")
+
+    async def _handle_rag_analysis_5min(self) -> str:
+        """Analyze only the latest 5-minute window of RAG data for suspicious activity"""
+        if not self.ai_ready:
+            return "NO_THREAT"  # No AI available, assume no threat
+
+        try:
+            # Import RAG system
+            from rag_system import get_rag_system
+            import time
+
+            # Get RAG system instance
+            rag = get_rag_system()
+
+            # Calculate 5-minute window (300 seconds ago)
+            current_time = int(time.time())
+            five_minutes_ago = current_time - 300
+
+            # Search RAG for recent process data (last 5 minutes)
+            rag_context = rag.search_semantic(
+                query="suspicious processes malware rogue virus security threats",
+                limit=10,  # Get more results for 5-minute window
+                threshold=0.1  # Lower threshold to get more recent data
+            )
+
+            # Filter to only include documents from last 5 minutes
+            recent_context = []
+            for result in rag_context:
+                if hasattr(result.document, 'metadata') and 'timestamp' in result.document.metadata:
+                    doc_timestamp = result.document.metadata['timestamp']
+                    if doc_timestamp >= five_minutes_ago:
+                        recent_context.append(f"[{result.document.id}] {result.relevance_context}")
+
+            if not recent_context:
+                return "NO_THREAT"  # No recent data to analyze
+
+            rag_context_str = "\n".join(recent_context)
+
+            # Create AI prompt for 5-minute window analysis
+            ai_prompt = f"""Analyze the recent process activity (last 5 minutes) for suspicious or malicious behavior.
+
+RECENT PROCESS ACTIVITY (last 5 minutes):
+{rag_context_str}
+
+Look for:
+- Processes with suspicious names (rogue, malware, virus, etc.)
+- Unusual process behavior patterns
+- Processes that might be security threats
+- Any processes that seem out of place
+- Patterns that indicate malicious activity
+
+Respond with:
+- "THREAT_DETECTED: [description]" if you find suspicious processes
+- "NO_THREAT" if everything looks normal
+
+Be thorough but concise. Focus on actual security threats in the recent activity."""
+
+            # Get AI response
+            response = await self.ai_client.get_completion(ai_prompt)
+
+            # Parse response
+            if "THREAT_DETECTED:" in response:
+                return response.strip()
+            else:
+                return "NO_THREAT"
+
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: RAG analysis error: {e}")
+            return "NO_THREAT"  # Fallback to no threat
+
     async def _handle_process_analysis(self, ps_output: str) -> str:
-        """Use RAG + AI to analyze process output for suspicious activity"""
+        """Use RAG + AI to analyze process output for suspicious activity (legacy)"""
         if not self.ai_ready:
             return "NO_THREAT"  # No AI available, assume no threat
 
@@ -581,14 +681,30 @@ async def main():
             # Handle PROCESS_ANALYSIS requests from Security Agent
             if line.startswith("PROCESS_ANALYSIS:"):
                 try:
-                    ps_output = line[16:]  # Remove "PROCESS_ANALYSIS:" prefix
-                    response = await backend._handle_process_analysis(ps_output)
+                    analysis_type = line[16:]  # Remove "PROCESS_ANALYSIS:" prefix
+                    if analysis_type == "ANALYZE_RAG_5MIN":
+                        # Analyze only latest 5-minute window of RAG data
+                        response = await backend._handle_rag_analysis_5min()
+                    else:
+                        # Legacy: analyze specific ps output
+                        response = await backend._handle_process_analysis(analysis_type)
                     sys.stdout.write(response + "\n")
                     sys.stdout.flush()
                     continue
                 except Exception as e:
                     sys.stdout.write(f"NO_THREAT\n")  # Fallback to no threat
                     sys.stdout.flush()
+                    continue
+            
+            # Handle RAG_ADD_PROCESS requests from Security Agent
+            if line.startswith("RAG_ADD_PROCESS:"):
+                try:
+                    ps_output = line[16:]  # Remove "RAG_ADD_PROCESS:" prefix
+                    await backend._add_process_to_rag(ps_output)
+                    # No response needed for RAG additions
+                    continue
+                except Exception as e:
+                    # Silent failure for RAG additions
                     continue
             
             # Parse JSON command

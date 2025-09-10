@@ -469,6 +469,7 @@ void cleanup_security_agent_socket(void) {
     unlink(security_agent_socket_path);
 }
 
+
 void get_security_agent_status(char* status, size_t size) {
     // Read from shared memory instead of socket
     const char* home = getenv("HOME");
@@ -1399,7 +1400,7 @@ int main() {
             health_check_counter = 0;
         }
         
-        // Security agent status is now read from shared memory in get_security_agent_status()
+        // Security agent communicates directly with backend via shared memory
         
         // Non-blocking AI status check (only if backend not connected yet)
         if (state.socket_fd < 0 && state.backend_pid > 0) {
