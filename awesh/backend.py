@@ -454,6 +454,19 @@ async def main():
                     sys.stdout.flush()
                     continue
             
+            # Handle PROCESS_ANALYSIS requests from Security Agent
+            if line.startswith("PROCESS_ANALYSIS:"):
+                try:
+                    ps_output = line[16:]  # Remove "PROCESS_ANALYSIS:" prefix
+                    response = await backend._handle_process_analysis(ps_output)
+                    sys.stdout.write(response + "\n")
+                    sys.stdout.flush()
+                    continue
+                except Exception as e:
+                    sys.stdout.write(f"NO_THREAT\n")  # Fallback to no threat
+                    sys.stdout.flush()
+                    continue
+            
             # Parse JSON command
             try:
                 data = json.loads(line)
