@@ -20,6 +20,15 @@ from bash_executor import BashExecutor
 from command_safety import CommandSafetyFilter
 from sensitive_data_filter import SensitiveDataFilter
 
+# Import agent system
+from agents import (
+    SecurityAgent, 
+    KubernetesAgent, 
+    ContainerAgent, 
+    CommandRouterAgent,
+    AgentProcessor
+)
+
 
 class AweshBackend:
     """Backend subprocess that handles AI and command routing"""
@@ -32,6 +41,9 @@ class AweshBackend:
         self.safety_filter = CommandSafetyFilter()
         self.sensitive_filter = SensitiveDataFilter()
         self.pending_confirmation = None  # Store command awaiting confirmation
+        
+        # Initialize agent system
+        self.agent_processor = None
         
     async def initialize(self):
         """Initialize heavy AI components"""
@@ -48,6 +60,9 @@ class AweshBackend:
             # Initialize bash executor
             self.bash_executor = BashExecutor(".")
             
+            # Initialize agent system
+            self._initialize_agents()
+            
             # Send AI ready signal to parent
             sys.stdout.write("AI_READY\n")
             sys.stdout.flush()
@@ -57,6 +72,25 @@ class AweshBackend:
             sys.stdout.write("AI_FAILED\n")
             sys.stdout.flush()
             print(f"Backend init error: {e}", file=sys.stderr)
+    
+    def _initialize_agents(self):
+        """Initialize the agent system"""
+        try:
+            # Create agents in priority order
+            agents = [
+                SecurityAgent(),
+                KubernetesAgent(),
+                ContainerAgent(),
+                CommandRouterAgent()
+            ]
+            
+            # Initialize agent processor
+            self.agent_processor = AgentProcessor(agents)
+            print("✅ Agent system initialized successfully")
+            
+        except Exception as e:
+            print(f"⚠️ Agent system initialization failed: {e}")
+            self.agent_processor = None
     
     def _is_interactive_command(self, command: str) -> bool:
         """Check if command needs interactive terminal"""
@@ -74,6 +108,36 @@ class AweshBackend:
             # Check for confirmation responses first
             if command.lower().strip() in ['y', 'yes', 'n', 'no']:
                 return await self._handle_confirmation_response(command)
+            
+            # Process through agent system first
+            if self.agent_processor:
+                try:
+                    context = {"working_directory": os.getcwd(), "user": os.getenv("USER", "unknown")}
+                    success, response, modified_prompt, metadata = await self.agent_processor.process_prompt(command, context)
+                    
+                    if not success:
+                        # Agent processing failed
+                        return {
+                            "stdout": "",
+                            "stderr": response + "\n",
+                            "exit_code": 1
+                        }
+                    
+                    if response:
+                        # Agent handled the prompt and provided a response
+                        return {
+                            "stdout": response + "\n",
+                            "stderr": "",
+                            "exit_code": 0
+                        }
+                    
+                    # Agent didn't handle, use modified prompt if available
+                    if modified_prompt:
+                        command = modified_prompt
+                        
+                except Exception as e:
+                    print(f"⚠️ Agent processing error: {e}", file=sys.stderr)
+                    # Continue with original command if agent processing fails
             
             # Check command safety before executing
             is_safe, unsafe_reason = self.safety_filter.is_command_safe(command)
