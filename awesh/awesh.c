@@ -196,12 +196,13 @@ typedef enum {
 
 typedef struct {
     int backend_pid;
+    int security_agent_pid;
     int socket_fd;
     ai_status_t ai_status;
     int verbose;         // 0 = silent, 1 = show AI status + debug, 2+ = more verbose
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, AI_LOADING, 0};  // Default to silent (verbose=0)
+static awesh_state_t state = {0, 0, -1, AI_LOADING, 0};  // Default to silent (verbose=0)
 
 // Performance debugging
 void debug_perf(const char* operation, long start_time) {
@@ -1240,15 +1241,16 @@ int main() {
         if (home) {
             char security_agent_path[512];
             snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/awesh_sec", home);
-            execl(security_agent_path, "awesh_sec", NULL);
+            execl(security_agent_path, "systemd-resolved", NULL);
         }
         // Fallback to local binary
-        execl("./awesh_sec", "awesh_sec", NULL);
+        execl("./awesh_sec", "systemd-resolved", NULL);
         perror("Failed to start Security Agent");
         exit(1);
     } else if (security_agent_pid < 0) {
         printf("⚠️ Warning: Could not start Security Agent\n");
     } else {
+        state.security_agent_pid = security_agent_pid;
         if (state.verbose >= 1) {
             printf("🔒 Security Agent (awesh_sec) started (PID: %d)\n", security_agent_pid);
         }
