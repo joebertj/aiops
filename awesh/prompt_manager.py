@@ -221,16 +221,16 @@ class PromptManager:
         # Join with colons
         first_line = ":".join(first_line_parts)
         
-        # Add process monitoring warnings in RED
-        if HAVE_PROCESS_MONITOR:
-            try:
-                process_warning = scan_processes_for_prompt()
-                if process_warning:
-                    # Add process warning in RED (using ANSI escape codes)
-                    first_line += f" \033[91m{process_warning}\033[0m"
-            except Exception as e:
-                # Silently fail if process monitoring has issues
-                pass
+        # Add process monitoring warnings in RED (disabled for performance)
+        # if HAVE_PROCESS_MONITOR:
+        #     try:
+        #         process_warning = scan_processes_for_prompt()
+        #         if process_warning:
+        #             # Add process warning in RED (using ANSI escape codes)
+        #             first_line += f" \033[91m{process_warning}\033[0m"
+        #     except Exception as e:
+        #         # Silently fail if process monitoring has issues
+        #         pass
         
         # Return two-line prompt: first line with context, second line just >
         return f"{first_line}\n>"

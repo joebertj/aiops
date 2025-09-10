@@ -53,16 +53,16 @@ class AweshShell:
         print(f"Model: {self.config.model}")
         print()
         
+        # Show initial prompt immediately
+        try:
+            prompt = self.prompt_manager.get_prompt(False, "")
+        except Exception:
+            prompt = self.prompt_manager.get_simple_prompt(False)
+        print(prompt, flush=True)
+        
         # Simple frontend loop - instant
         while self.running:
             try:
-                # Show enhanced prompt with context information
-                try:
-                    prompt = self.prompt_manager.get_prompt(self.ai_ready, "")
-                except Exception:
-                    # Fallback to simple prompt if enhanced prompt fails
-                    prompt = self.prompt_manager.get_simple_prompt(self.ai_ready)
-                print(prompt, end='', flush=True)
                 line = input()
 
                 if not line.strip():
@@ -70,6 +70,13 @@ class AweshShell:
 
                 # Process command - frontend logic only
                 self._handle_command(line)
+                
+                # Show prompt for next command
+                try:
+                    prompt = self.prompt_manager.get_prompt(self.ai_ready, "")
+                except Exception:
+                    prompt = self.prompt_manager.get_simple_prompt(self.ai_ready)
+                print(prompt, flush=True)
 
             except KeyboardInterrupt:
                 print()
