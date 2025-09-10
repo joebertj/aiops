@@ -18,6 +18,8 @@ awesh/command_safety.py
 awesh/config.py
 awesh/main.py
 awesh/policy.py
+awesh/prompt_manager.py
+awesh/rag_system.py
 awesh/router.py
 awesh/secure_mcp_client.py
 awesh/sensitive_data_filter.py
