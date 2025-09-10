@@ -59,6 +59,9 @@ class AweshAIClient:
         # Load system prompt (this can be slow if creating default)
         await self._load_system_prompt()
         
+        # Store model name for status display
+        self.model_name = os.getenv('MODEL', 'not configured')
+        
     async def _load_system_prompt(self):
         """Load system prompt from configured file"""
         prompt_file = self.config.system_prompt_file
@@ -277,6 +280,10 @@ Remember: Terminal users want to execute and see results, but SAFETY COMES FIRST
         except Exception as e:
             yield f"Error processing prompt: {e}"
             
+    def get_model_name(self) -> str:
+        """Get the current model name"""
+        return getattr(self, 'model_name', 'not configured')
+    
     async def get_completion(self, prompt: str) -> str:
         """Get a simple completion from the AI (non-streaming)"""
         try:

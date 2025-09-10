@@ -629,6 +629,29 @@ Be thorough but concise. Focus on actual security threats. Use the historical co
             
         except Exception as e:
             return f"🔍 Process monitoring error: {e}"
+    
+    async def get_ai_status(self) -> dict:
+        """Get AI status information"""
+        try:
+            if self.ai_client:
+                return {
+                    "provider": os.getenv('AI_PROVIDER', 'openai'),
+                    "model": self.ai_client.get_model_name(),
+                    "ready": True
+                }
+            else:
+                return {
+                    "provider": "not configured",
+                    "model": "not configured", 
+                    "ready": False
+                }
+        except Exception as e:
+            return {
+                "provider": "error",
+                "model": "error",
+                "ready": False,
+                "error": str(e)
+            }
 
 
 async def main():
@@ -705,6 +728,19 @@ async def main():
                     continue
                 except Exception as e:
                     # Silent failure for RAG additions
+                    continue
+            
+            # Handle STATUS requests from frontend
+            if line.strip() == "STATUS":
+                try:
+                    ai_status = await backend.get_ai_status()
+                    status_response = f"AI_PROVIDER:{ai_status['provider']}\nMODEL:{ai_status['model']}\nREADY:{ai_status['ready']}"
+                    sys.stdout.write(status_response + "\n")
+                    sys.stdout.flush()
+                    continue
+                except Exception as e:
+                    sys.stdout.write(f"ERROR:{e}\n")
+                    sys.stdout.flush()
                     continue
             
             # Parse JSON command
