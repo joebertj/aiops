@@ -10,6 +10,9 @@
 #include <sys/select.h>
 #include <signal.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <time.h>
@@ -17,6 +20,11 @@
 #include <ctype.h>
 
 static char socket_path[512];
+
+// Shared memory for ProcessAgent status
+#define PROCESS_STATUS_SIZE 256
+static char* process_status_memory = NULL;
+static int process_status_fd = -1;
 
 // Function declarations
 void get_git_branch(char* branch, size_t size);
@@ -27,6 +35,9 @@ void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
 int send_to_backend(const char* query, char* response, size_t response_size);
 void get_process_agent_status(char* status, size_t size);
+int init_process_status_memory(void);
+void cleanup_process_status_memory(void);
+void debug_perf(const char* operation, long start_time);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -195,29 +206,59 @@ void debug_perf(const char* operation, long start_time) {
 }
 
 // Get process agent status for prompt display
+int init_process_status_memory(void) {
+    // Create shared memory for ProcessAgent status
+    const char* shm_name = "/awesh_process_status";
+    
+    // Create shared memory object
+    process_status_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+    if (process_status_fd == -1) {
+        return -1;
+    }
+    
+    // Set size
+    if (ftruncate(process_status_fd, PROCESS_STATUS_SIZE) == -1) {
+        close(process_status_fd);
+        return -1;
+    }
+    
+    // Map shared memory
+    process_status_memory = mmap(NULL, PROCESS_STATUS_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, process_status_fd, 0);
+    if (process_status_memory == MAP_FAILED) {
+        close(process_status_fd);
+        return -1;
+    }
+    
+    // Initialize with empty status
+    memset(process_status_memory, 0, PROCESS_STATUS_SIZE);
+    
+    return 0;
+}
+
+void cleanup_process_status_memory(void) {
+    if (process_status_memory != NULL && process_status_memory != MAP_FAILED) {
+        munmap(process_status_memory, PROCESS_STATUS_SIZE);
+        process_status_memory = NULL;
+    }
+    if (process_status_fd != -1) {
+        close(process_status_fd);
+        process_status_fd = -1;
+    }
+    // Remove shared memory object
+    shm_unlink("/awesh_process_status");
+}
+
 void get_process_agent_status(char* status, size_t size) {
-    if (state.socket_fd < 0) {
-        strncpy(status, "🔍 Process monitoring offline", size - 1);
+    // Read from shared memory - instant access, no backend communication
+    if (process_status_memory == NULL || process_status_memory == MAP_FAILED) {
+        strncpy(status, "", size - 1);
         status[size - 1] = '\0';
         return;
     }
     
-    // Send status request to backend
-    char response[MAX_RESPONSE_LEN];
-    if (send_to_backend("PROCESS_STATUS", response, sizeof(response)) == 0) {
-        // Parse response for threat status
-        if (strncmp(response, "THREAT:", 7) == 0) {
-            char* threat_info = response + 7;
-            strncpy(status, threat_info, size - 1);
-            status[size - 1] = '\0';
-        } else {
-            strncpy(status, "✅ No threats detected", size - 1);
-            status[size - 1] = '\0';
-        }
-    } else {
-        strncpy(status, "🔍 Process monitoring active", size - 1);
-        status[size - 1] = '\0';
-    }
+    // Copy status from shared memory
+    strncpy(status, process_status_memory, size - 1);
+    status[size - 1] = '\0';
 }
 
 // Send query to backend and get response
@@ -405,6 +446,10 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
         waitpid(state.backend_pid, NULL, 0);
     }
     unlink(socket_path);
+    
+    // Cleanup shared memory
+    cleanup_process_status_memory();
+    
     printf("\nGoodbye!\n");
     exit(0);
 }
@@ -774,7 +819,7 @@ int is_interactive_bash_command(const char* cmd) {
     if (!first_word) return 0;
     
     // Check if first word is interactive
-    for (int i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
+    for (size_t i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
         if (strcmp(first_word, interactive_commands[i]) == 0) {
             return 1;
         }
@@ -875,6 +920,11 @@ int main() {
     // Load configuration
     load_config();
     
+    // Initialize shared memory for ProcessAgent status
+    if (init_process_status_memory() != 0) {
+        printf("⚠️ Warning: Could not initialize ProcessAgent shared memory\n");
+    }
+    
     // Set VERBOSE environment variable for backend
     char verbose_str[8];
     snprintf(verbose_str, sizeof(verbose_str), "%d", state.verbose);
@@ -896,7 +946,7 @@ int main() {
     
     // Main shell loop
     char* line;
-    char prompt[512];  // Increased size for full path
+    char prompt[1024];  // Increased size for full path and long context
     
     // Initial prompt will be generated in the main loop
     

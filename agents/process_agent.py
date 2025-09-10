@@ -100,20 +100,29 @@ class ProcessAgent(BaseAgent):
         
         try:
             # Scan for threats
-            threats = self.process_monitor.scan_for_threats()
+            threats = self.process_monitor.scan_for_suspicious_processes()
             
             # Update active threats
             self.active_threats = threats
             
+            # Get status for prompt and write to shared memory
+            status = self.get_prompt_status()
+            if status:
+                self.write_status_to_memory(status)
+            else:
+                self.write_status_to_memory("✅ No threats detected")
+            
             # Log new threats
             for threat in threats:
                 if threat.threat_level in ["high", "critical"]:
-                    print(f"🚨 HIGH THREAT DETECTED: {threat.process_name} - {threat.description}")
+                    print(f"🚨 HIGH THREAT DETECTED: {threat.process.name} - {threat.description}")
             
             self.last_scan_time = current_time
             
         except Exception as e:
             print(f"⚠️ Process monitoring error: {e}")
+            # Write error status
+            self.write_status_to_memory("🔍 Process monitoring error")
     
     async def _list_processes(self) -> AgentResult:
         """List current processes"""
@@ -244,3 +253,26 @@ class ProcessAgent(BaseAgent):
         }.get(max_threat.threat_level, "❓")
         
         return f"{threat_emoji}{max_threat.threat_level.upper()}:{max_threat.process_name}"
+    
+    def write_status_to_memory(self, status: str):
+        """Write status to shared memory for frontend to read"""
+        try:
+            import mmap
+            import os
+            
+            # Open shared memory object
+            shm_fd = os.open("/dev/shm/awesh_process_status", os.O_CREAT | os.O_RDWR)
+            if shm_fd == -1:
+                return
+            
+            # Set size
+            os.ftruncate(shm_fd, 256)
+            
+            # Map shared memory
+            with mmap.mmap(shm_fd, 256) as mm:
+                # Write status to shared memory
+                mm.write(status.encode('utf-8'))
+                mm.write(b'\x00')  # Null terminate
+                
+        except Exception as e:
+            print(f"⚠️ ProcessAgent: Failed to write to shared memory: {e}")
