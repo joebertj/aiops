@@ -28,6 +28,7 @@ class Config:
     # Shell settings
     prompt_label: str = "awesh> "
     multiline_enabled: bool = False
+    enhanced_prompt: bool = True  # Enable enhanced prompt with context info
     
     # Security settings
     audit_log_enabled: bool = False

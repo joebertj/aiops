@@ -13,8 +13,10 @@ from typing import Optional
 
 try:
     from .config import Config
+    from .prompt_manager import PromptManager
 except ImportError:
     from config import Config
+    from prompt_manager import PromptManager
 
 # Lazy imports - only load when needed
 CommandRouter = None
@@ -31,6 +33,9 @@ class AweshShell:
         self.running = True
         self.last_exit_code = 0
         self.last_command = None
+        
+        # Initialize prompt manager
+        self.prompt_manager = PromptManager()
 
         # Backend subprocess communication
         self.backend_ready = False
@@ -51,11 +56,12 @@ class AweshShell:
         # Simple frontend loop - instant
         while self.running:
             try:
-                # Show prompt with AI status
-                if self.ai_ready:
-                    prompt = "awesh🤖> "
-                else:
-                    prompt = "awesh> "
+                # Show enhanced prompt with context information
+                try:
+                    prompt = self.prompt_manager.get_prompt(self.ai_ready)
+                except Exception:
+                    # Fallback to simple prompt if enhanced prompt fails
+                    prompt = self.prompt_manager.get_simple_prompt(self.ai_ready)
                 print(prompt, end='', flush=True)
                 line = input()
 
