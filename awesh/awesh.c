@@ -643,13 +643,13 @@ int main() {
         // Dynamic prompt with color-coded AI status (always shown)
         switch (state.ai_status) {
             case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
                 break;
             case AI_READY:
-                snprintf(prompt, sizeof(prompt), "\033[32mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[32mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
                 break;
             case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
                 break;
         }
         

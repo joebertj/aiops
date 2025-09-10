@@ -232,9 +232,9 @@ class PromptManager:
         #         # Silently fail if process monitoring has issues
         #         pass
         
-        # Return two-line prompt: first line with context, second line just >
+        # Return multi-line prompt with random text to test display
         import os
-        return f"{first_line}{os.linesep}{os.linesep}{os.linesep}{os.linesep}{os.linesep}> "
+        return f"{first_line}\nThis is line 2 with random text\nThis is line 3 with more text\n> "
     
     def get_enhanced_prompt_with_rag(self, ai_ready: bool = False, user_input: str = "") -> str:
         """
