@@ -26,6 +26,7 @@ char* parse_ai_mode(const char* input);
 void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
 int send_to_backend(const char* query, char* response, size_t response_size);
+void get_process_agent_status(char* status, size_t size);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -58,13 +59,7 @@ long get_time_ms() {
     return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-void debug_perf(const char* operation, long start_time) {
-    int verbose = atoi(getenv("VERBOSE") ? getenv("VERBOSE") : "1");
-    if (verbose >= 2) {
-        long duration = get_time_ms() - start_time;
-        fprintf(stderr, "🐛 DEBUG: %s took %ldms\n", operation, duration);
-    }
-}
+// Function will be defined after state and constants
 
 // Optimized prompt data fetching with caching
 void get_prompt_data_cached(char* git_branch, char* k8s_context, char* k8s_namespace, size_t size) {
@@ -162,6 +157,8 @@ char* parse_ai_mode(const char* input) {
 
 // Functions will be defined after state and constants
 
+// Function will be defined after state and constants
+
 // Handle AI query in edit mode (simplified)
 void handle_ai_query(const char* query) {
     printf("🤖 Edit mode: %s\n", query);
@@ -187,7 +184,41 @@ typedef struct {
     int verbose;         // 0 = silent, 1 = show AI status + debug, 2+ = more verbose
 } awesh_state_t;
 
-static awesh_state_t state = {0, -1, AI_LOADING, 1};
+static awesh_state_t state = {0, -1, AI_LOADING, 0};  // Default to silent (verbose=0)
+
+// Performance debugging
+void debug_perf(const char* operation, long start_time) {
+    if (state.verbose >= 2) {
+        long duration = get_time_ms() - start_time;
+        fprintf(stderr, "🐛 DEBUG: %s took %ldms\n", operation, duration);
+    }
+}
+
+// Get process agent status for prompt display
+void get_process_agent_status(char* status, size_t size) {
+    if (state.socket_fd < 0) {
+        strncpy(status, "🔍 Process monitoring offline", size - 1);
+        status[size - 1] = '\0';
+        return;
+    }
+    
+    // Send status request to backend
+    char response[MAX_RESPONSE_LEN];
+    if (send_to_backend("PROCESS_STATUS", response, sizeof(response)) == 0) {
+        // Parse response for threat status
+        if (strncmp(response, "THREAT:", 7) == 0) {
+            char* threat_info = response + 7;
+            strncpy(status, threat_info, size - 1);
+            status[size - 1] = '\0';
+        } else {
+            strncpy(status, "✅ No threats detected", size - 1);
+            status[size - 1] = '\0';
+        }
+    } else {
+        strncpy(status, "🔍 Process monitoring active", size - 1);
+        status[size - 1] = '\0';
+    }
+}
 
 // Send query to backend and get response
 int send_to_backend(const char* query, char* response, size_t response_size) {
@@ -203,19 +234,39 @@ int send_to_backend(const char* query, char* response, size_t response_size) {
         return -1;
     }
     
-    // Read response with timeout
+    // Read response with timeout and thinking dots
     fd_set readfds;
     struct timeval timeout;
-    FD_ZERO(&readfds);
-    FD_SET(state.socket_fd, &readfds);
-    timeout.tv_sec = 30;  // 30 second timeout for AI responses
-    timeout.tv_usec = 0;
+    int dots_shown = 0;
     
-    if (select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
-        ssize_t bytes_received = recv(state.socket_fd, response, response_size - 1, 0);
-        if (bytes_received > 0) {
-            response[bytes_received] = '\0';
-            return 0;  // Success
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(state.socket_fd, &readfds);
+        timeout.tv_sec = 5;  // Check every 5 seconds for thinking dots
+        timeout.tv_usec = 0;
+        
+        int result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+        
+        if (result > 0) {
+            // Data available, read response
+            ssize_t bytes_received = recv(state.socket_fd, response, response_size - 1, 0);
+            if (bytes_received > 0) {
+                response[bytes_received] = '\0';
+                return 0;  // Success
+            }
+        } else if (result == 0) {
+            // Timeout - show thinking dots
+            dots_shown++;
+            if (dots_shown <= 6) {  // Show up to 6 dots (30 seconds)
+                printf(".");
+                fflush(stdout);
+            } else {
+                printf("\n❌ AI response timeout\n");
+                return -1;
+            }
+        } else {
+            // Error
+            return -1;
         }
     }
     
@@ -696,7 +747,23 @@ int is_interactive_bash_command(const char* cmd) {
     const char* interactive_commands[] = {
         "vi", "vim", "nano", "emacs", "htop", "top", "less", "more", 
         "man", "ssh", "ftp", "telnet", "mysql", "psql", "python", 
-        "python3", "node", "irb", "bash", "sh", "zsh", "sudo"
+        "python3", "node", "irb", "bash", "sh", "zsh", "sudo",
+        // Common file operations
+        "cat", "ls", "pwd", "cd", "mkdir", "rmdir", "rm", "cp", "mv", "chmod", "chown",
+        "grep", "find", "which", "whereis", "locate", "head", "tail", "sort", "uniq",
+        "wc", "cut", "awk", "sed", "tr", "diff", "cmp", "file", "stat", "touch",
+        // System info
+        "ps", "kill", "killall", "jobs", "bg", "fg", "nohup", "screen", "tmux",
+        "df", "du", "free", "uptime", "who", "whoami", "id", "groups", "uname",
+        "date", "cal", "history", "alias", "type", "help", "env", "printenv",
+        // Network
+        "ping", "curl", "wget", "netstat", "ss", "lsof", "traceroute", "nslookup",
+        // Package management
+        "apt", "yum", "dnf", "pacman", "brew", "pip", "npm", "cargo", "go",
+        // Git
+        "git", "hg", "svn",
+        // Editors and viewers
+        "code", "subl", "atom", "gedit", "kate", "mousepad"
     };
     
     char cmd_copy[MAX_CMD_LEN];
@@ -883,16 +950,23 @@ int main() {
             strcat(context_parts, git_branch);
         }
         
-        // Generate secure prompt with context information and emojis
+        // Get process agent status for first line
+        char process_status[128] = "";
+        get_process_agent_status(process_status, sizeof(process_status));
+        
+        // Generate secure prompt with process agent status on first line
         switch (state.ai_status) {
             case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
+                         process_status, user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_READY:
-                snprintf(prompt, sizeof(prompt), "🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
+                         process_status, user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
+                         process_status, user_color, username, hostname, cwd, context_parts);
                 break;
         }
         

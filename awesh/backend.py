@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config
 from ai_client import AweshAIClient
-from bash_executor import BashExecutor
+# Bash execution moved to C frontend for better performance
 from command_safety import CommandSafetyFilter
 from sensitive_data_filter import SensitiveDataFilter
 
@@ -37,7 +37,7 @@ class AweshBackend:
     def __init__(self):
         self.config = Config.load(Path.home() / '.aweshrc')
         self.ai_client = None
-        self.bash_executor = None
+        # Bash execution moved to C frontend
         self.ai_ready = False
         self.safety_filter = CommandSafetyFilter()
         self.sensitive_filter = SensitiveDataFilter()
@@ -58,8 +58,7 @@ class AweshBackend:
             await self.ai_client.initialize()
             self.ai_ready = True
             
-            # Initialize bash executor
-            self.bash_executor = BashExecutor(".")
+            # Bash execution handled by C frontend
             
             # Initialize agent system
             print("🔧 Initializing agent system...", file=sys.stderr)
@@ -111,15 +110,7 @@ class AweshBackend:
                 print(f"⚠️ Agent system initialization failed: {e}")
             self.agent_processor = None
     
-    def _is_interactive_command(self, command: str) -> bool:
-        """Check if command needs interactive terminal"""
-        interactive_commands = {
-            'vi', 'vim', 'nano', 'emacs', 'htop', 'top', 'less', 'more', 
-            'man', 'ssh', 'ftp', 'telnet', 'mysql', 'psql', 'python', 
-            'python3', 'node', 'irb', 'bash', 'sh', 'zsh'
-        }
-        first_word = command.strip().split()[0] if command.strip() else ""
-        return first_word in interactive_commands
+    # Interactive command detection moved to C frontend
     
     async def process_command(self, command: str) -> dict:
         """Smart routing: bypass AI for clean successful commands"""
@@ -203,36 +194,15 @@ class AweshBackend:
                     "exit_code": 0
                 }
             
-            # Try bash first
-            if self.bash_executor:
-                exit_code, stdout, stderr = await self.bash_executor.execute(command)
-                
-                # Interactive commands - always return directly (no AI processing)
-                if self._is_interactive_command(command):
-                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
-                
-                # Clean success (exit 0, has stdout, no stderr) - bypass AI
-                if exit_code == 0 and stdout and not stderr:
-                    return {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
-                
-                # Command failed - send to AI if ready (after filtering sensitive data)
-                if self.ai_ready:
-                    # Filter sensitive data from command output before sending to AI
-                    filtered_stdout = self.sensitive_filter.filter_command_output(command, stdout)
-                    filtered_stderr = self.sensitive_filter.filter_command_output(command, stderr)
-                    
-                    bash_result = {"stdout": filtered_stdout, "stderr": filtered_stderr, "exit_code": exit_code}
-                    return await self._handle_ai_prompt(command, bash_result)
-                else:
-                    # AI not ready - show bash output + hint
-                    return {
-                        "stdout": stdout, 
-                        "stderr": stderr + "💡 AI not ready yet - this might be a natural language query\n", 
-                        "exit_code": exit_code
-                    }
-            else:
-                # No bash executor - AI handles everything
+            # Send directly to AI agents (bash commands handled by C frontend)
+            if self.ai_ready:
                 return await self._handle_ai_prompt(command)
+            else:
+                return {
+                    "stdout": "", 
+                    "stderr": "💡 AI not ready yet - this might be a natural language query\n", 
+                    "exit_code": 1
+                }
                 
         except Exception as e:
             return {"stdout": "", "stderr": f"Backend error: {e}\n", "exit_code": 1}
@@ -253,19 +223,12 @@ class AweshBackend:
         if response_lower in ['y', 'yes']:
             # User confirmed - execute the command
             try:
-                if self.bash_executor:
-                    exit_code, stdout, stderr = await self.bash_executor.execute(command)
-                    return {
-                        "stdout": f"✅ Executed: {command}\n{stdout}",
-                        "stderr": stderr,
-                        "exit_code": exit_code
-                    }
-                else:
-                    return {
-                        "stdout": "Bash executor not available.\n",
-                        "stderr": "",
-                        "exit_code": 1
-                    }
+                # Bash execution handled by C frontend
+                return {
+                    "stdout": f"✅ Command confirmed: {command}\n(Execution handled by C frontend)",
+                    "stderr": "",
+                    "exit_code": 0
+                }
             except Exception as e:
                 return {
                     "stdout": "",
@@ -306,6 +269,64 @@ Process this and respond appropriately."""
             return {"stdout": output, "stderr": "", "exit_code": 0}
         except Exception as e:
             return {"stdout": "", "stderr": f"❌ AI error: {e}\n", "exit_code": 1}
+    
+    async def process_ai_query(self, query: str) -> str:
+        """Process AI query for mode detection"""
+        try:
+            # Use agent system to process the query
+            if self.agent_processor:
+                result = await self.agent_processor.process_prompt(query, {})
+                if result.handled:
+                    return result.response
+            
+            # Fallback to direct AI processing
+            if self.ai_client:
+                # Determine if this should be command or edit mode
+                mode_prompt = f"""Determine if this user input should be executed as a command or displayed as informational content.
+
+User input: "{query}"
+
+Respond with exactly one of these formats:
+- awesh_cmd: <command> - if this should be executed as a shell command
+- awesh_edit: <content> - if this should be displayed as informational content
+
+Examples:
+- "ls -la" → awesh_cmd: ls -la
+- "write a poem about cats" → awesh_edit: Here's a poem about cats: [poem content]
+- "what is docker" → awesh_edit: Docker is a containerization platform that...
+- "kill process 123" → awesh_cmd: kill 123
+
+Your response:"""
+                
+                response = ""
+                async for chunk in self.ai_client.process_prompt(mode_prompt):
+                    response += chunk
+                
+                return response.strip()
+            
+            return "awesh_edit: AI not available"
+            
+        except Exception as e:
+            return f"awesh_edit: Error processing query: {e}"
+    
+    async def get_process_status(self) -> str:
+        """Get process agent status for prompt display"""
+        try:
+            if self.agent_processor:
+                # Find ProcessAgent in the agent list
+                for agent in self.agent_processor.agents:
+                    if hasattr(agent, 'name') and agent.name == "ProcessAgent":
+                        # Get threat status from ProcessAgent
+                        if hasattr(agent, 'get_prompt_status'):
+                            status = agent.get_prompt_status()
+                            if status:
+                                return f"THREAT:{status}"
+                        break
+            
+            return "✅ No threats detected"
+            
+        except Exception as e:
+            return f"🔍 Process monitoring error: {e}"
 
 
 async def main():
@@ -326,9 +347,38 @@ async def main():
             if not line:
                 break
                 
-            # Parse command
+            line = line.strip()
+            
+            # Handle QUERY commands (AI mode detection)
+            if line.startswith("QUERY:"):
+                query = line[6:]  # Remove "QUERY:" prefix
+                try:
+                    # Process with AI for mode detection
+                    response = await backend.process_ai_query(query)
+                    sys.stdout.write(response + "\n")
+                    sys.stdout.flush()
+                    continue
+                except Exception as e:
+                    sys.stdout.write(f"❌ AI query error: {e}\n")
+                    sys.stdout.flush()
+                    continue
+            
+            # Handle PROCESS_STATUS commands
+            if line == "PROCESS_STATUS":
+                try:
+                    # Get process agent status
+                    response = await backend.get_process_status()
+                    sys.stdout.write(response + "\n")
+                    sys.stdout.flush()
+                    continue
+                except Exception as e:
+                    sys.stdout.write(f"❌ Process status error: {e}\n")
+                    sys.stdout.flush()
+                    continue
+            
+            # Parse JSON command
             try:
-                data = json.loads(line.strip())
+                data = json.loads(line)
                 command = data.get("command", "")
                 
                 if command:

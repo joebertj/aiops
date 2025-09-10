@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config
 from ai_client import AweshAIClient
-from bash_executor import BashExecutor
+# Bash execution moved to C frontend
 
 SOCKET_PATH = "/tmp/awesh.sock"
 
@@ -25,7 +25,7 @@ class AweshSocketBackend:
     def __init__(self):
         self.config = Config.load(Path.home() / '.aweshrc')
         self.ai_client = None
-        self.bash_executor = None
+        # Bash execution handled by C frontend
         self.ai_ready = False
         self.socket = None
         
@@ -38,7 +38,7 @@ class AweshSocketBackend:
             self.ai_ready = True
             print("Backend: AI client ready!", file=sys.stderr)
             
-            self.bash_executor = BashExecutor(".")
+            # Bash execution handled by C frontend
             
         except Exception as e:
             print(f"Backend: AI init failed: {e}", file=sys.stderr)
