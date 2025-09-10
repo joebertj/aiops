@@ -38,12 +38,23 @@ class AweshAIClient:
         if AsyncOpenAI is None:
             from openai import AsyncOpenAI
             
-        # Initialize OpenAI client
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-            
-        self.client = AsyncOpenAI(api_key=api_key)
+        # Determine API provider and key
+        ai_provider = os.getenv('AI_PROVIDER', 'openai').lower()
+        
+        if ai_provider == 'openrouter':
+            api_key = os.getenv('OPENROUTER_API_KEY')
+            if not api_key:
+                raise ValueError("OPENROUTER_API_KEY environment variable not set")
+            # OpenRouter uses OpenAI-compatible API
+            self.client = AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1"
+            )
+        else:  # Default to OpenAI
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable not set")
+            self.client = AsyncOpenAI(api_key=api_key)
         
         # Load system prompt (this can be slow if creating default)
         await self._load_system_prompt()
@@ -266,6 +277,35 @@ Remember: Terminal users want to execute and see results, but SAFETY COMES FIRST
         except Exception as e:
             yield f"Error processing prompt: {e}"
             
+    async def get_completion(self, prompt: str) -> str:
+        """Get a simple completion from the AI (non-streaming)"""
+        try:
+            messages = [
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Prepare API parameters
+            api_params = {
+                "model": self.config.model,
+                "messages": messages,
+            }
+            
+            # Handle model-specific parameters
+            if self.config.model.startswith('gpt-5') or self.config.model.startswith('o1'):
+                api_params["max_completion_tokens"] = self.config.max_tokens
+            else:
+                api_params["max_tokens"] = self.config.max_tokens
+                api_params["temperature"] = self.config.temperature
+            
+            # Get non-streaming response
+            response = await self.client.chat.completions.create(**api_params)
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: AI completion error: {e}")
+            return "NO_THREAT"  # Fallback
+
     def _format_context(self, context: Dict[str, Any]) -> str:
         """Format context information for the AI"""
         context_parts = []

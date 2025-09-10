@@ -431,6 +431,86 @@ Your response:"""
         except Exception as e:
             return f"awesh_edit: Error processing query: {e}"
     
+    async def _handle_process_analysis(self, ps_output: str) -> str:
+        """Use RAG + AI to analyze process output for suspicious activity"""
+        if not self.ai_ready:
+            return "NO_THREAT"  # No AI available, assume no threat
+
+        try:
+            # Import RAG system
+            from rag_system import get_rag_system
+
+            # Get RAG system instance
+            rag = get_rag_system()
+
+            # Add current process output to RAG system with timestamp
+            import time
+            timestamp = int(time.time())
+            doc_id = f"process_scan_{timestamp}"
+
+            # Add to RAG system
+            rag.add_document(
+                doc_id=doc_id,
+                content=ps_output,
+                metadata={
+                    "type": "process_scan",
+                    "timestamp": timestamp,
+                    "scan_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "process_count": len(ps_output.split('\n')) - 1  # Approximate process count
+                }
+            )
+
+            # Search RAG for relevant context about suspicious processes
+            rag_context = rag.search_semantic(
+                query="suspicious processes malware rogue virus security threats",
+                limit=3,
+                threshold=0.2
+            )
+
+            # Build context from RAG results
+            context_parts = []
+            for result in rag_context:
+                if result.similarity_score > 0.3:  # Only include highly relevant results
+                    context_parts.append(f"[{result.document.id}] {result.relevance_context}")
+
+            rag_context_str = "\n".join(context_parts) if context_parts else "No relevant historical context found."
+
+            # Create enhanced AI prompt with RAG context
+            ai_prompt = f"""Analyze this process list for suspicious or malicious activity using both the current process list and relevant historical context.
+
+HISTORICAL CONTEXT (from RAG system):
+{rag_context_str}
+
+CURRENT PROCESS LIST:
+{ps_output}
+
+Look for:
+- Processes with suspicious names (rogue, malware, virus, etc.)
+- Unusual process behavior patterns
+- Processes that might be security threats
+- Any processes that seem out of place
+- Patterns that match known threats from historical context
+
+Respond with:
+- "THREAT_DETECTED: [description]" if you find suspicious processes
+- "NO_THREAT" if everything looks normal
+
+Be thorough but concise. Focus on actual security threats. Use the historical context to identify patterns."""
+
+            # Get AI response
+            response = await self.ai_client.get_completion(ai_prompt)
+
+            # Parse response
+            if "THREAT_DETECTED:" in response:
+                return response.strip()
+            else:
+                return "NO_THREAT"
+
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: Process analysis RAG+AI error: {e}")
+            return "NO_THREAT"  # Fallback to no threat
+
     async def get_process_status(self) -> str:
         """Get process agent status for prompt display"""
         try:
