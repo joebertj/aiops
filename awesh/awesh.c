@@ -765,22 +765,19 @@ int main() {
         // Get prompt data with caching optimization
         get_prompt_data_cached(git_branch, k8s_context, k8s_namespace, 64);
         
-        // Build context parts string with emojis
+        // Build context parts string with emojis (clean format)
         char context_parts[256] = "";
         if (strlen(k8s_context) > 0) {
-            strcat(context_parts, ":☸️<");
+            strcat(context_parts, ":☸️");
             strcat(context_parts, k8s_context);
-            strcat(context_parts, ">");
         }
         if (strlen(k8s_namespace) > 0 && strcmp(k8s_namespace, "default") != 0) {
-            strcat(context_parts, ":☸️<");
+            strcat(context_parts, ":☸️");
             strcat(context_parts, k8s_namespace);
-            strcat(context_parts, ">");
         }
         if (strlen(git_branch) > 0) {
-            strcat(context_parts, ":🌿<");
+            strcat(context_parts, ":🌿");
             strcat(context_parts, git_branch);
-            strcat(context_parts, ">");
         }
         
         // Generate secure prompt with context information and emojis
