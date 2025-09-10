@@ -960,7 +960,14 @@ int main() {
     // Start Security Agent as separate process (non-blocking)
     pid_t security_agent_pid = fork();
     if (security_agent_pid == 0) {
-        // Child: start Security Agent
+        // Child: start Security Agent from ~/.local/bin
+        const char* home = getenv("HOME");
+        if (home) {
+            char security_agent_path[512];
+            snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/security_agent", home);
+            execl(security_agent_path, "security_agent", NULL);
+        }
+        // Fallback to local binary
         execl("./security_agent", "security_agent", NULL);
         perror("Failed to start Security Agent");
         exit(1);

@@ -140,11 +140,26 @@ def build_project(clean=False):
                 log(f"❌ Clean failed: {result.stderr}")
                 return False
         
-        log("🔨 Building C frontend...")
+        log("🔨 Building C components (frontend + Security Agent)...")
         result = subprocess.run(["make"], capture_output=True, text=True, cwd=AWESH_DIR)
         
         if result.returncode == 0:
-            log("✅ C frontend built successfully")
+            log("✅ C components built successfully")
+            # Verify all binaries were built
+            awesh_binary = AWESH_DIR / "awesh"
+            security_agent_binary = AWESH_DIR / "security_agent"
+            
+            if awesh_binary.exists():
+                log("✅ Frontend binary (awesh) built")
+            else:
+                log("❌ Frontend binary (awesh) missing")
+                return False
+                
+            if security_agent_binary.exists():
+                log("✅ Security Agent binary (security_agent) built")
+            else:
+                log("❌ Security Agent binary (security_agent) missing")
+                return False
         else:
             log(f"❌ C build failed:\n{result.stderr}")
             return False
@@ -243,33 +258,50 @@ def kill_processes(force=False):
         return False
 
 def deploy_binary(backup=True):
-    """Deploy awesh binary to ~/.local/bin"""
+    """Deploy awesh and security_agent binaries to ~/.local/bin"""
     try:
         # Create ~/.local/bin if it doesn't exist
         install_dir = Path.home() / ".local" / "bin"
         install_dir.mkdir(parents=True, exist_ok=True)
         
-        # Backup existing installation
+        # Deploy frontend binary (awesh)
         if backup and INSTALL_PATH.exists():
             backup_path = INSTALL_PATH.with_suffix('.bak')
             INSTALL_PATH.rename(backup_path)
             log(f"💾 Backed up existing awesh to {backup_path}")
         
-        # Copy new binary
-        binary_path = AWESH_DIR / "awesh"
-        if not binary_path.exists():
+        awesh_binary_path = AWESH_DIR / "awesh"
+        if not awesh_binary_path.exists():
             log("❌ awesh binary not found. Run build first.")
             return False
         
         import shutil
-        shutil.copy2(binary_path, INSTALL_PATH)
+        shutil.copy2(awesh_binary_path, INSTALL_PATH)
         INSTALL_PATH.chmod(0o755)
-        
         log(f"✅ Deployed awesh to {INSTALL_PATH}")
         
+        # Deploy Security Agent binary
+        security_agent_binary_path = AWESH_DIR / "security_agent"
+        security_agent_install_path = install_dir / "security_agent"
+        
+        if not security_agent_binary_path.exists():
+            log("❌ security_agent binary not found. Run build first.")
+            return False
+        
+        # Backup existing Security Agent if it exists
+        if backup and security_agent_install_path.exists():
+            backup_path = security_agent_install_path.with_suffix('.bak')
+            security_agent_install_path.rename(backup_path)
+            log(f"💾 Backed up existing security_agent to {backup_path}")
+        
+        shutil.copy2(security_agent_binary_path, security_agent_install_path)
+        security_agent_install_path.chmod(0o755)
+        log(f"✅ Deployed security_agent to {security_agent_install_path}")
+        
         # Verify deployment
-        if INSTALL_PATH.exists() and os.access(INSTALL_PATH, os.X_OK):
-            log("✅ Binary is executable and ready")
+        if (INSTALL_PATH.exists() and os.access(INSTALL_PATH, os.X_OK) and
+            security_agent_install_path.exists() and os.access(security_agent_install_path, os.X_OK)):
+            log("✅ All binaries are executable and ready")
             return True
         else:
             log("❌ Deployment verification failed")
