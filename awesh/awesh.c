@@ -470,46 +470,41 @@ void cleanup_security_agent_socket(void) {
 }
 
 void get_security_agent_status(char* status, size_t size) {
-    // Read from Security Agent socket - non-blocking
-    if (security_agent_socket_fd < 0) {
+    // Read from shared memory instead of socket
+    const char* home = getenv("HOME");
+    if (!home) {
         strncpy(status, "", size - 1);
         status[size - 1] = '\0';
         return;
     }
-
-    // Check if Security Agent has data available (non-blocking)
-    fd_set readfds;
-    struct timeval timeout;
-    FD_ZERO(&readfds);
-    FD_SET(security_agent_socket_fd, &readfds);
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 1000;  // 1ms timeout - very short
-
-    if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
-        // Accept Security Agent connection
-        int client_fd = accept(security_agent_socket_fd, NULL, NULL);
-        if (client_fd >= 0) {
-            // Read status from Security Agent
-            char response[256];
-            ssize_t bytes = recv(client_fd, response, sizeof(response) - 1, 0);
-            if (bytes > 0) {
-                response[bytes] = '\0';
-                strncpy(status, response, size - 1);
-                status[size - 1] = '\0';
-            } else {
-                strncpy(status, "", size - 1);
-                status[size - 1] = '\0';
-            }
-            close(client_fd);
-        } else {
-            strncpy(status, "", size - 1);
-            status[size - 1] = '\0';
-        }
-    } else {
-        // No data available - use empty status
+    
+    char shm_name[256];
+    snprintf(shm_name, sizeof(shm_name), "/awesh_security_status_%s", home);
+    
+    // Open shared memory
+    int shm_fd = shm_open(shm_name, O_RDONLY, 0666);
+    if (shm_fd == -1) {
         strncpy(status, "", size - 1);
         status[size - 1] = '\0';
+        return;
     }
+    
+    // Map shared memory
+    char* shared_status = mmap(NULL, 512, PROT_READ, MAP_SHARED, shm_fd, 0);
+    if (shared_status == MAP_FAILED) {
+        close(shm_fd);
+        strncpy(status, "", size - 1);
+        status[size - 1] = '\0';
+        return;
+    }
+    
+    // Copy status from shared memory
+    strncpy(status, shared_status, size - 1);
+    status[size - 1] = '\0';
+    
+    // Cleanup
+    munmap(shared_status, 512);
+    close(shm_fd);
 }
 
 // Send query to backend and get response
@@ -1403,6 +1398,8 @@ int main() {
             check_child_process_health();
             health_check_counter = 0;
         }
+        
+        // Security agent status is now read from shared memory in get_security_agent_status()
         
         // Non-blocking AI status check (only if backend not connected yet)
         if (state.socket_fd < 0 && state.backend_pid > 0) {
