@@ -12,7 +12,6 @@ awesh/__init__.py
 awesh_backend/__init__.py
 awesh_backend/__main__.py
 awesh_backend/ai_client.py
-awesh_backend/bash_executor.py
 awesh_backend/config.py
 awesh_backend/file_agent.py
 awesh_backend/server.py

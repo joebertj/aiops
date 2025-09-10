@@ -31,7 +31,7 @@ class AweshSocketBackend:
     def __init__(self):
         self.config = Config.load(Path.home() / '.aweshrc')
         self.ai_client = None
-        self.bash_executor = None
+        # Bash execution handled by C frontend
         self.ai_ready = False
         self.socket = None
         self.current_dir = os.getcwd()  # Track current working directory
@@ -63,7 +63,7 @@ class AweshSocketBackend:
             if verbose:
                 print("✅ Backend: AI client ready!", file=sys.stderr)
             
-            self.bash_executor = BashExecutor(self.current_dir)
+            # Bash execution handled by C frontend
             
         except Exception as e:
             print(f"Backend: AI init failed: {e}", file=sys.stderr)
@@ -83,8 +83,7 @@ class AweshSocketBackend:
                 new_dir = command[4:]  # Remove 'CWD:' prefix
                 debug_log(f"Syncing working directory to: {new_dir}")
                 self.current_dir = new_dir
-                if self.bash_executor:
-                    self.bash_executor.set_cwd(self.current_dir)
+                # Bash execution handled by C frontend
                 return "OK"  # Send acknowledgment
                 
             # Handle AI status check from frontend
@@ -125,43 +124,9 @@ class AweshSocketBackend:
             # Note: cd and pwd should be handled by frontend as builtins
             
             
-            # Try bash first
-            if self.bash_executor:
-                debug_log("process_command: Executing bash command")
-                exit_code, stdout, stderr = await self.bash_executor.execute(command)
-                debug_log(f"process_command: Bash result - exit: {exit_code}, stdout: {len(stdout) if stdout else 0} chars")
-                
-                # Success cases - return bash output directly (bypass AI)
-                if exit_code == 0:
-                    if stdout and not stderr:
-                        debug_log("process_command: Clean success, returning bash output")
-                        return stdout
-                    elif stdout:  # Has output but also has stderr - still successful
-                        debug_log("process_command: Success with warnings, returning bash output")
-                        return stdout + (stderr if stderr else "")
-                    elif not stderr:  # No output, no errors (like cd)
-                        debug_log("process_command: Empty success, returning empty")
-                        return ""
-                
-                # Command failed - let AI handle if ready, otherwise show bash output
-                debug_log(f"process_command: Command failed (exit={exit_code}), ai_ready: {self.ai_ready}")
-                if self.ai_ready:
-                    bash_result = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}
-                    debug_log("process_command: Sending to AI")
-                    return await self._handle_ai_prompt(command, bash_result)
-                else:
-                    # AI not ready - return bash output directly
-                    debug_log("process_command: AI not ready, returning bash output")
-                    result = ""
-                    if stdout:
-                        result += stdout
-                    if stderr:
-                        result += stderr
-                    return result
-            else:
-                # No bash executor - AI handles everything
-                debug_log("process_command: No bash executor, sending to AI")
-                return await self._handle_ai_prompt(command)
+            # Bash execution handled by C frontend - send everything to AI
+            debug_log("process_command: Sending to AI (bash handled by frontend)")
+            return await self._handle_ai_prompt(command)
                 
         except Exception as e:
             debug_log(f"process_command: Exception: {e}")
@@ -303,27 +268,10 @@ This allows the system to execute them automatically."""
             command = command_stack.pop()
             debug_log(f"Trying command: {command}")
             
-            # Execute the command using bash executor
-            if self.bash_executor:
-                exit_code, stdout, stderr = await self.bash_executor.execute(command)
-                
-                debug_log(f"Command result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
-                
-                # Check if command succeeded (exit_code=0 OR has stdout)
-                if exit_code == 0 or stdout:
-                    debug_log(f"Command succeeded: {command}")
-                    
-                    # If no output and this is first attempt, retry the entire process
-                    if not stdout and retry_count == 0:
-                        debug_log("⚠️  Command succeeded but no output - retrying entire process from start")
-                        await asyncio.sleep(1)  # Brief delay before retry
-                        return await self._handle_ai_prompt(self.last_user_command, None, 1)
-                    
-                    return stdout if stdout else "Command executed successfully (no output)\n"
-                else:
-                    # Command failed, add to failed list and try next
-                    debug_log(f"Command failed: {command} (exit={exit_code})")
-                    failed_commands.append(command)
+            # Bash execution handled by C frontend - commands are executed there
+            # For now, assume command succeeded and return success message
+            debug_log(f"Command would be executed by C frontend: {command}")
+            return f"Command '{command}' would be executed by C frontend\n"
         
         # All commands failed, try to get alternatives from AI
         debug_log(f"All {len(failed_commands)} commands failed, requesting alternatives")
@@ -492,30 +440,10 @@ awesh: <command>"""
             command = command_stack.pop()
             debug_log(f"⚡ TRYING COMMAND {command_number}/{len(awesh_commands)} for option {option_number}: {command}")
             
-            # Execute the command using bash executor
-            if self.bash_executor:
-                exit_code, stdout, stderr = await self.bash_executor.execute(command)
-                
-                debug_log(f"📊 Command {command_number} result: exit={exit_code}, stdout={len(stdout) if stdout else 0} chars, stderr={len(stderr) if stderr else 0} chars")
-                
-                # Check if command succeeded (exit_code=0 OR has stdout)
-                if exit_code == 0 or stdout:
-                    debug_log(f"🎉 JACKPOT! Command {command_number} in option {option_number} succeeded: {command}")
-                    debug_log(f"✨ First try success - option {option_number}, command {command_number} worked perfectly!")
-                    
-                    # If no output and this is first attempt, retry the entire process
-                    if not stdout and retry_count == 0:
-                        debug_log("⚠️  Command succeeded but no output - retrying entire process from start")
-                        await asyncio.sleep(1)  # Brief delay before retry
-                        return await self._handle_ai_prompt(self.last_user_command, None, 1)
-                    
-                    return stdout if stdout else "Command executed successfully (no output)\n"
-                else:
-                    # Command failed, add to failed list and try next
-                    debug_log(f"❌ Command {command_number} failed: {command} (exit={exit_code})")
-                    if stderr:
-                        debug_log(f"   stderr: {stderr[:100]}...")  # Show first 100 chars of stderr
-                    failed_commands.append(command)
+            # Bash execution handled by C frontend - commands are executed there
+            # For now, assume command succeeded and return success message
+            debug_log(f"Command {command_number} would be executed by C frontend: {command}")
+            return f"Command '{command}' would be executed by C frontend\n"
             
             command_number += 1
         
