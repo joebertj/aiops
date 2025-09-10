@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .config import Config
 from .ai_client import AweshAIClient
-from .bash_executor import BashExecutor
+# Bash execution handled by C frontend
 from .file_agent import FileAgent
 
 # Global verbose setting
