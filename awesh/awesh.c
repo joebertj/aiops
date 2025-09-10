@@ -40,6 +40,10 @@ void debug_perf(const char* operation, long start_time);
 void check_child_process_health(void);
 int is_process_running(pid_t pid);
 void log_health_status(const char* process_name, pid_t pid, int is_running);
+void get_health_status_emojis(char* backend_emoji, char* security_emoji);
+int restart_backend(void);
+int restart_security_agent(void);
+void attempt_child_restart(void);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -259,6 +263,153 @@ void check_child_process_health(void) {
         } else if (state.verbose >= 2) {
             fprintf(stderr, "💚 HEALTH: Security Agent socket is responsive\n");
         }
+    }
+}
+
+void get_health_status_emojis(char* backend_emoji, char* security_emoji) {
+    // Backend health emoji - unique emojis for each state
+    if (state.backend_pid > 0 && is_process_running(state.backend_pid)) {
+        switch (state.ai_status) {
+            case AI_LOADING:
+                strcpy(backend_emoji, "🤖");  // Loading
+                break;
+            case AI_READY:
+                strcpy(backend_emoji, "🧠");  // Ready
+                break;
+            case AI_FAILED:
+                strcpy(backend_emoji, "💀");  // Failed
+                break;
+        }
+    } else {
+        strcpy(backend_emoji, "🚫");  // Not running (different from security)
+    }
+    
+    // Security agent health emoji - unique emojis for each state
+    if (security_agent_socket_fd >= 0) {
+        // Quick socket test
+        fd_set readfds;
+        struct timeval timeout;
+        FD_ZERO(&readfds);
+        FD_SET(security_agent_socket_fd, &readfds);
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 1000; // 1ms timeout
+        
+        if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) >= 0) {
+            strcpy(security_emoji, "🔒");  // Running
+        } else {
+            strcpy(security_emoji, "🔓");  // Not responding (different from backend)
+        }
+    } else {
+        strcpy(security_emoji, "⛔");  // Not started (different from both)
+    }
+}
+
+int restart_backend(void) {
+    if (state.verbose >= 1) {
+        fprintf(stderr, "🔄 RESTART: Attempting to restart backend...\n");
+    }
+    
+    // Clean up existing backend connection
+    if (state.socket_fd >= 0) {
+        close(state.socket_fd);
+        state.socket_fd = -1;
+    }
+    
+    // Start new backend process
+    pid_t new_backend_pid = fork();
+    if (new_backend_pid == 0) {
+        // Child: ignore SIGINT and start backend
+        signal(SIGINT, SIG_IGN);
+        
+        const char* home = getenv("HOME");
+        char venv_python[512];
+        
+        if (home) {
+            snprintf(venv_python, sizeof(venv_python), "%s/AI/aiops/venv/bin/python3", home);
+            if (access(venv_python, X_OK) == 0) {
+                execl(venv_python, "python3", "-m", "awesh_backend", NULL);
+            }
+        }
+        
+        execl("/usr/bin/python3", "python3", "-m", "awesh_backend", NULL);
+        perror("Failed to restart backend");
+        exit(1);
+    } else if (new_backend_pid > 0) {
+        state.backend_pid = new_backend_pid;
+        state.ai_status = AI_LOADING;
+        
+        if (state.verbose >= 1) {
+            fprintf(stderr, "✅ RESTART: Backend restarted (PID: %d)\n", new_backend_pid);
+        }
+        return 0;
+    } else {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "❌ RESTART: Failed to restart backend\n");
+        }
+        return -1;
+    }
+}
+
+int restart_security_agent(void) {
+    if (state.verbose >= 1) {
+        fprintf(stderr, "🔄 RESTART: Attempting to restart Security Agent...\n");
+    }
+    
+    // Clean up existing security agent socket
+    cleanup_security_agent_socket();
+    
+    // Reinitialize socket
+    if (init_security_agent_socket() != 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "❌ RESTART: Failed to reinitialize Security Agent socket\n");
+        }
+        return -1;
+    }
+    
+    // Start new security agent process
+    pid_t new_security_pid = fork();
+    if (new_security_pid == 0) {
+        // Child: ignore SIGINT and start security agent
+        signal(SIGINT, SIG_IGN);
+        
+        const char* home = getenv("HOME");
+        if (home) {
+            char security_agent_path[512];
+            snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/awesh_sec", home);
+            execl(security_agent_path, "awesh_sec", NULL);
+        }
+        
+        execl("./awesh_sec", "awesh_sec", NULL);
+        perror("Failed to restart Security Agent");
+        exit(1);
+    } else if (new_security_pid > 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "✅ RESTART: Security Agent restarted (PID: %d)\n", new_security_pid);
+        }
+        return 0;
+    } else {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "❌ RESTART: Failed to restart Security Agent\n");
+        }
+        return -1;
+    }
+}
+
+void attempt_child_restart(void) {
+    // Check if backend needs restart
+    if (state.backend_pid <= 0 || !is_process_running(state.backend_pid)) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "🔄 AUTO-RESTART: Backend process failed, attempting restart\n");
+        }
+        restart_backend();
+    }
+    
+    // Check if security agent needs restart
+    if (security_agent_socket_fd < 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "🔄 AUTO-RESTART: Security Agent failed, attempting restart\n");
+        }
+        restart_security_agent();
     }
 }
 
@@ -1061,7 +1212,7 @@ int main() {
     pid_t backend_pid = fork();
     if (backend_pid == 0) {
         // Child: start backend
-        if (start_backend() != 0) {
+    if (start_backend() != 0) {
             exit(1);
         }
         exit(0);
@@ -1134,24 +1285,24 @@ int main() {
         char security_status[128] = "";
         get_security_agent_status(security_status, sizeof(security_status));
         
-        // Generate secure prompt with security agent status on first line
-        switch (state.ai_status) {
-            case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "%s\n🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
-                         security_status, user_color, username, hostname, cwd, context_parts);
-                break;
-            case AI_READY:
-                snprintf(prompt, sizeof(prompt), "%s\n🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
-                         security_status, user_color, username, hostname, cwd, context_parts);
-                break;
-            case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "%s\n💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
-                         security_status, user_color, username, hostname, cwd, context_parts);
-                break;
-        }
+        // Get health status emojis for backend and security agent
+        char backend_emoji[8];
+        char security_emoji[8];
+        get_health_status_emojis(backend_emoji, security_emoji);
+        
+        // Generate secure prompt with health status emojis
+        snprintf(prompt, sizeof(prompt), "%s\n%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
+                 security_status, backend_emoji, security_emoji, user_color, username, hostname, cwd, context_parts);
         
         // Debug total prompt generation time
         debug_perf("total prompt generation", prompt_start);
+        
+        // Check child process health (every 10th prompt to avoid overhead)
+        static int health_check_counter = 0;
+        if (++health_check_counter >= 10) {
+            check_child_process_health();
+            health_check_counter = 0;
+        }
         
         // Non-blocking AI status check (only if backend not connected yet)
         if (state.socket_fd < 0 && state.backend_pid > 0) {
