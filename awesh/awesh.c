@@ -23,6 +23,58 @@ void init_socket_path() {
         strcpy(socket_path, "/tmp/awesh.sock");  // fallback
     }
 }
+
+// Helper function to get git branch
+void get_git_branch(char* branch, size_t size) {
+    FILE* fp = popen("git branch --show-current 2>/dev/null", "r");
+    if (fp) {
+        if (fgets(branch, size, fp)) {
+            // Remove newline
+            char* newline = strchr(branch, '\n');
+            if (newline) *newline = '\0';
+        } else {
+            strcpy(branch, "");
+        }
+        pclose(fp);
+    } else {
+        strcpy(branch, "");
+    }
+}
+
+// Helper function to get kubectl context
+void get_kubectl_context(char* context, size_t size) {
+    FILE* fp = popen("kubectl config current-context 2>/dev/null", "r");
+    if (fp) {
+        if (fgets(context, size, fp)) {
+            char* newline = strchr(context, '\n');
+            if (newline) *newline = '\0';
+        } else {
+            strcpy(context, "");
+        }
+        pclose(fp);
+    } else {
+        strcpy(context, "");
+    }
+}
+
+// Helper function to get kubectl namespace
+void get_kubectl_namespace(char* namespace, size_t size) {
+    FILE* fp = popen("kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null", "r");
+    if (fp) {
+        if (fgets(namespace, size, fp)) {
+            char* newline = strchr(namespace, '\n');
+            if (newline) *newline = '\0';
+            if (strlen(namespace) == 0) {
+                strcpy(namespace, "default");
+            }
+        } else {
+            strcpy(namespace, "default");
+        }
+        pclose(fp);
+    } else {
+        strcpy(namespace, "default");
+    }
+}
 #define MAX_CMD_LEN 4096
 #define MAX_RESPONSE_LEN 65536
 
@@ -640,16 +692,46 @@ int main() {
         // Color-code username: red for root, green for normal user
         char* user_color = (getuid() == 0) ? "\033[31m" : "\033[32m";  // Red for root, green for user
         
-        // Dynamic prompt with color-coded AI status (always shown)
+        // Build secure dynamic prompt directly in C (no external file dependencies)
+        char git_branch[64] = "";
+        char k8s_context[64] = "";
+        char k8s_namespace[64] = "";
+        
+        // Get git branch
+        get_git_branch(git_branch, sizeof(git_branch));
+        
+        // Get kubectl context and namespace
+        get_kubectl_context(k8s_context, sizeof(k8s_context));
+        get_kubectl_namespace(k8s_namespace, sizeof(k8s_namespace));
+        
+        // Build context parts string
+        char context_parts[256] = "";
+        if (strlen(k8s_context) > 0) {
+            strcat(context_parts, ":<");
+            strcat(context_parts, k8s_context);
+            strcat(context_parts, ">");
+        }
+        if (strlen(k8s_namespace) > 0 && strcmp(k8s_namespace, "default") != 0) {
+            strcat(context_parts, ":<");
+            strcat(context_parts, k8s_namespace);
+            strcat(context_parts, ">");
+        }
+        if (strlen(git_branch) > 0) {
+            strcat(context_parts, ":<");
+            strcat(context_parts, git_branch);
+            strcat(context_parts, ">");
+        }
+        
+        // Generate secure prompt with context information
         switch (state.ai_status) {
             case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_READY:
-                snprintf(prompt, sizeof(prompt), "\033[32mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[32mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m\n> ", user_color, username, hostname, cwd);
+                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
         }
         

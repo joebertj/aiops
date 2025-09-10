@@ -20,7 +20,8 @@ class AgentProcessor:
     Agent Processing Flow:
     1. Security Agent (priority 10) - Validates safety and filters sensitive data
     2. Kubernetes Agent (priority 20) - Handles Kubernetes operations
-    3. Command Router Agent (priority 100) - Routes between Bash and AI
+    3. Container Agent (priority 30) - Handles container operations using runc
+    4. Command Router Agent (priority 100) - Routes between Bash and AI
     
     If any agent fails, processing stops immediately and the user is informed.
     """
