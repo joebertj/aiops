@@ -1232,6 +1232,11 @@ int main() {
     // Load configuration
     load_config();
     
+    // Set VERBOSE environment variable for all child processes
+    char verbose_str[8];
+    snprintf(verbose_str, sizeof(verbose_str), "%d", state.verbose);
+    setenv("VERBOSE", verbose_str, 1);
+    
     // Initialize Security Agent socket
     if (init_security_agent_socket() != 0) {
         printf("⚠️ Warning: Could not initialize Security Agent socket\n");
@@ -1264,10 +1269,7 @@ int main() {
         // Don't wait for Security Agent - let it initialize in background
     }
     
-    // Set VERBOSE environment variable for backend
-    char verbose_str[8];
-    snprintf(verbose_str, sizeof(verbose_str), "%d", state.verbose);
-    setenv("VERBOSE", verbose_str, 1);
+    // VERBOSE environment variable already set above for all child processes
     
     // Show welcome message immediately
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
