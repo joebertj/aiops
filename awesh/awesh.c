@@ -1359,9 +1359,9 @@ int main() {
                 char* rogue_emoji = "👹";
                 char* threat_text = strstr(security_status, "rogue_process");
                 if (threat_text) {
-                    // Replace 🔴 HIGH: with 👹 ROGUE: for rogue processes
+                    // Replace 🔴 HIGH: with 👹 for rogue processes
                     char rogue_status[128];
-                    snprintf(rogue_status, sizeof(rogue_status), "👹 ROGUE:%s", threat_text);
+                    snprintf(rogue_status, sizeof(rogue_status), "👹%s", threat_text);
                     snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", rogue_status);
                 } else {
                     // Other high threats keep red circle

@@ -149,6 +149,42 @@ class AweshBackend:
                 print(f"🔒 DEBUG: Security Agent communication failed: {e}")
             return prompt  # Fallback
     
+    async def _handle_process_analysis(self, ps_output: str) -> str:
+        """Use AI to analyze process output for suspicious activity"""
+        if not self.ai_ready:
+            return "NO_THREAT"  # No AI available, assume no threat
+        
+        try:
+            # Create AI prompt for process analysis
+            ai_prompt = f"""Analyze this process list for suspicious or malicious activity. Look for:
+- Processes with suspicious names (rogue, malware, virus, etc.)
+- Unusual process behavior patterns
+- Processes that might be security threats
+- Any processes that seem out of place
+
+Process list:
+{ps_output}
+
+Respond with:
+- "THREAT_DETECTED: [description]" if you find suspicious processes
+- "NO_THREAT" if everything looks normal
+
+Be thorough but concise. Focus on actual security threats."""
+
+            # Get AI response
+            response = await self.ai_client.get_completion(ai_prompt)
+            
+            # Parse response
+            if "THREAT_DETECTED:" in response:
+                return response.strip()
+            else:
+                return "NO_THREAT"
+                
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: Process analysis AI error: {e}")
+            return "NO_THREAT"  # Fallback to no threat
+    
     # Interactive command detection moved to C frontend
     
     async def process_command(self, command: str) -> dict:
