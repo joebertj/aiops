@@ -482,7 +482,7 @@ void get_security_agent_status(char* status, size_t size) {
     char shm_name[256];
     const char* user = getenv("USER");
     if (!user) user = "unknown";
-    snprintf(shm_name, sizeof(shm_name), "/awesh_security_status_%s", user);
+    snprintf(shm_name, sizeof(shm_name), "/dev/shm/awesh_security_status_%s", user);
     
     // Open shared memory
     int shm_fd = shm_open(shm_name, O_RDONLY, 0666);
