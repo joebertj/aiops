@@ -765,34 +765,34 @@ int main() {
         // Get prompt data with caching optimization
         get_prompt_data_cached(git_branch, k8s_context, k8s_namespace, 64);
         
-        // Build context parts string
+        // Build context parts string with emojis
         char context_parts[256] = "";
         if (strlen(k8s_context) > 0) {
-            strcat(context_parts, ":<");
+            strcat(context_parts, ":☸️<");
             strcat(context_parts, k8s_context);
             strcat(context_parts, ">");
         }
         if (strlen(k8s_namespace) > 0 && strcmp(k8s_namespace, "default") != 0) {
-            strcat(context_parts, ":<");
+            strcat(context_parts, ":☸️<");
             strcat(context_parts, k8s_namespace);
             strcat(context_parts, ">");
         }
         if (strlen(git_branch) > 0) {
-            strcat(context_parts, ":<");
+            strcat(context_parts, ":🌿<");
             strcat(context_parts, git_branch);
             strcat(context_parts, ">");
         }
         
-        // Generate secure prompt with context information
+        // Generate secure prompt with context information and emojis
         switch (state.ai_status) {
             case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_READY:
-                snprintf(prompt, sizeof(prompt), "\033[32mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "\033[31mAI\033[0m:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", user_color, username, hostname, cwd, context_parts);
                 break;
         }
         

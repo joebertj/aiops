@@ -61,7 +61,9 @@ class AweshBackend:
             self.bash_executor = BashExecutor(".")
             
             # Initialize agent system
+            print("🔧 Initializing agent system...", file=sys.stderr)
             self._initialize_agents()
+            print("🔧 Agent system initialization complete", file=sys.stderr)
             
             # Send AI ready signal to parent
             sys.stdout.write("AI_READY\n")
