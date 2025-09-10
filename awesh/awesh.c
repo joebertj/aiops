@@ -178,8 +178,17 @@ char* parse_ai_mode(const char* input) {
 
 // Handle AI query in edit mode (simplified)
 void handle_ai_query(const char* query) {
-    printf("🤖 Edit mode: %s\n", query);
-    printf("💡 AI processing would happen here\n");
+    // Get verbose level from environment since state is not accessible here
+    int verbose = 0;
+    const char* verbose_str = getenv("VERBOSE");
+    if (verbose_str) {
+        verbose = atoi(verbose_str);
+    }
+    
+    if (verbose >= 2) {
+        printf("🤖 Edit mode: %s\n", query);
+        printf("💡 AI processing would happen here\n");
+    }
 }
 
 // REMOVED: Parallel popen implementation - replaced with secure in-memory file parsing
@@ -1241,10 +1250,10 @@ int main() {
         if (home) {
             char security_agent_path[512];
             snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/awesh_sec", home);
-            execl(security_agent_path, "systemd-resolved", NULL);
+            execl(security_agent_path, "awesh_sec", NULL);
         }
         // Fallback to local binary
-        execl("./awesh_sec", "systemd-resolved", NULL);
+        execl("./awesh_sec", "awesh_sec", NULL);
         perror("Failed to start Security Agent");
         exit(1);
     } else if (security_agent_pid < 0) {
@@ -1352,34 +1361,37 @@ int main() {
         char security_emoji[8];
         get_health_status_emojis(backend_emoji, security_emoji);
         
-        // Build security context part with color coding
+        // Build security context part with color coding - only show actual threats
         char security_context[256] = "";
         if (strlen(security_status) > 0) {
-            // Check if it's a high threat (starts with "🔴 HIGH:")
-            if (strncmp(security_status, "🔴 HIGH:", 8) == 0) {
-                // High threat - color in red, replace 🔴 with 👹 for rogue processes
-                char* rogue_emoji = "👹";
-                char* threat_text = strstr(security_status, "rogue_process");
-                if (threat_text) {
-                    // Replace 🔴 HIGH: with 👹 for rogue processes
-                    char rogue_status[128];
-                    snprintf(rogue_status, sizeof(rogue_status), "👹%s", threat_text);
-                    snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", rogue_status);
-                } else {
-                    // Other high threats keep red circle
-                    snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", security_status);
+            // Only show security status if there are actual threats (not "No threats detected")
+            if (strstr(security_status, "🔴 HIGH:") || strstr(security_status, "🟡 MEDIUM:") || strstr(security_status, "🟢 LOW:")) {
+                // Check if it's a high threat (starts with "🔴 HIGH:")
+                if (strncmp(security_status, "🔴 HIGH:", 8) == 0) {
+                    // High threat - color in red, replace 🔴 with 👹 for rogue processes
+                    char* threat_text = strstr(security_status, "rogue_process");
+                    if (threat_text) {
+                        // Replace 🔴 HIGH: with 👹 for rogue processes
+                        char rogue_status[128];
+                        snprintf(rogue_status, sizeof(rogue_status), "👹%s", threat_text);
+                        snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", rogue_status);
+                    } else {
+                        // Other high threats keep red circle
+                        snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", security_status);
+                    }
+                } else if (strncmp(security_status, "🟡 MEDIUM:", 10) == 0) {
+                    // Medium threat - color in yellow
+                    snprintf(security_context, sizeof(security_context), ":\033[33m%s\033[0m", security_status);
+                } else if (strncmp(security_status, "🟢 LOW:", 8) == 0) {
+                    // Low threat - color in green
+                    snprintf(security_context, sizeof(security_context), ":\033[32m%s\033[0m", security_status);
                 }
-            } else if (strncmp(security_status, "🟡 MEDIUM:", 10) == 0) {
-                // Medium threat - color in yellow
-                snprintf(security_context, sizeof(security_context), ":\033[33m%s\033[0m", security_status);
-            } else {
-                // Low threat or no threat - normal color
-                snprintf(security_context, sizeof(security_context), ":%s", security_status);
             }
+            // Silent mode: Don't show "No threats detected" or other status messages
         }
         
         // Generate secure prompt with integrated security status (security comes right after user@host)
-        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s%s\n> ",
+        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s\n> ",
                  backend_emoji, security_emoji, user_color, username, hostname, cwd, security_context, context_parts);
         
         // Debug total prompt generation time
