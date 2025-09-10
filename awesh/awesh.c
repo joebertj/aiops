@@ -158,20 +158,7 @@ int start_backend() {
         if (home) {
             snprintf(venv_python, sizeof(venv_python), "%s/AI/aiops/venv/bin/python3", home);
             if (access(venv_python, X_OK) == 0) {
-                // Debug: write to a file to see if this path is being used
-                FILE *debug = fopen("/tmp/awesh_debug.log", "w");
-                if (debug) {
-                    fprintf(debug, "Using venv Python: %s\n", venv_python);
-                    fclose(debug);
-                }
                 execl(venv_python, "python3", "-m", "awesh_backend", NULL);
-            } else {
-                // Debug: write to a file to see if venv Python is not accessible
-                FILE *debug = fopen("/tmp/awesh_debug.log", "w");
-                if (debug) {
-                    fprintf(debug, "Venv Python not accessible: %s\n", venv_python);
-                    fclose(debug);
-                }
             }
         }
         
@@ -380,9 +367,12 @@ void handle_awesh_command(const char* cmd) {
         printf("  aweh              Show this help\n");
         printf("  awes              Show verbose status (API provider, model, debug state)\n");
         printf("\n🔧 Verbose Debug:\n");
-        printf("  awev              Show debug logging status\n");
-        printf("  awev on           Enable debug logging\n");
-        printf("  awev off          Disable debug logging\n");
+        printf("  awev              Show verbose level status\n");
+        printf("  awev 0            Set verbose level 0 (silent)\n");
+        printf("  awev 1            Set verbose level 1 (info)\n");
+        printf("  awev 2            Set verbose level 2 (debug)\n");
+        printf("  awev on           Enable verbose logging (level 1)\n");
+        printf("  awev off          Disable verbose logging (level 0)\n");
         printf("\n🤖 AI Provider:\n");
         printf("  awea              Show current AI provider and model\n");
         printf("  awea openai       Switch to OpenAI\n");
@@ -411,26 +401,44 @@ void handle_awesh_command(const char* cmd) {
         }
         printf("📊 Backend PID: %d\n", state.backend_pid);
         printf("🔌 Socket FD: %d\n", state.socket_fd);
-        printf("🔧 Verbose Level: %d (0=silent, 1=AI status+debug, 2+=more verbose)\n", state.verbose);
+        printf("🔧 Verbose Level: %d (0=silent, 1=info, 2=debug)\n", state.verbose);
     } else if (strncmp(cmd, "awev", 4) == 0) {
         // Parse awev command and arguments
         if (strcmp(cmd, "awev") == 0) {
             // Just "awev" - show status
-            printf("🔧 Verbose Level: %d (0=silent, 1=AI status+debug, 2+=more verbose)\n", state.verbose);
-        } else if (strcmp(cmd, "awev on") == 0) {
-            // Enable verbose logging
-            update_config_file("VERBOSE", "1");
-            send_command("VERBOSE:1");
-            state.verbose = 1;
-            printf("🔧 Debug logging enabled\n");
-        } else if (strcmp(cmd, "awev off") == 0) {
-            // Disable verbose logging  
+            printf("🔧 Verbose Level: %d (0=silent, 1=info, 2=debug)\n", state.verbose);
+        } else if (strcmp(cmd, "awev 0") == 0) {
+            // Set verbose level 0 (silent)
             update_config_file("VERBOSE", "0");
             send_command("VERBOSE:0");
             state.verbose = 0;
-            printf("🔧 Debug logging disabled\n");
+            printf("🔧 Verbose level set to 0 (silent)\n");
+        } else if (strcmp(cmd, "awev 1") == 0) {
+            // Set verbose level 1 (info)
+            update_config_file("VERBOSE", "1");
+            send_command("VERBOSE:1");
+            state.verbose = 1;
+            printf("🔧 Verbose level set to 1 (info)\n");
+        } else if (strcmp(cmd, "awev 2") == 0) {
+            // Set verbose level 2 (debug)
+            update_config_file("VERBOSE", "2");
+            send_command("VERBOSE:2");
+            state.verbose = 2;
+            printf("🔧 Verbose level set to 2 (debug)\n");
+        } else if (strcmp(cmd, "awev on") == 0) {
+            // Legacy: Enable verbose logging (level 1)
+            update_config_file("VERBOSE", "1");
+            send_command("VERBOSE:1");
+            state.verbose = 1;
+            printf("🔧 Verbose logging enabled (level 1)\n");
+        } else if (strcmp(cmd, "awev off") == 0) {
+            // Legacy: Disable verbose logging (level 0)
+            update_config_file("VERBOSE", "0");
+            send_command("VERBOSE:0");
+            state.verbose = 0;
+            printf("🔧 Verbose logging disabled (level 0)\n");
         } else {
-            printf("Usage: awev [on|off]\n");
+            printf("Usage: awev [0|1|2|on|off]\n");
         }
     } else if (strncmp(cmd, "awea", 4) == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";

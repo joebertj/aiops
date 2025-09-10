@@ -58,15 +58,41 @@ class AweshShell:
             prompt = self.prompt_manager.get_prompt(False, "")
         except Exception:
             prompt = self.prompt_manager.get_simple_prompt(False)
+        
+        # Debug: Write prompt details to file (only if VERBOSE >= 2)
+        verbose_level = int(os.getenv('VERBOSE', '1'))
+        if verbose_level >= 2:
+            with open("/tmp/awesh_prompt_debug.log", "w") as f:
+                f.write(f"Generated prompt: {repr(prompt)}\n")
+                f.write(f"Prompt length: {len(prompt)}\n")
+                f.write(f"Prompt lines: {prompt.count(chr(10))}\n")
+                f.write(f"Raw bytes: {prompt.encode()}\n")
+        
         import sys
         sys.stdout.write(prompt)
         sys.stdout.flush()
+        
+        # Debug: Write after display (only if VERBOSE >= 2)
+        if verbose_level >= 2:
+            with open("/tmp/awesh_prompt_debug.log", "a") as f:
+                f.write("Prompt displayed successfully\n")
         
         # Simple frontend loop - instant
         while self.running:
             try:
                 import sys
+                
+                # Debug: Log before input (only if VERBOSE >= 2)
+                if verbose_level >= 2:
+                    with open("/tmp/awesh_prompt_debug.log", "a") as f:
+                        f.write("About to read input...\n")
+                
                 line = sys.stdin.readline().rstrip('\n')
+                
+                # Debug: Log after input (only if VERBOSE >= 2)
+                if verbose_level >= 2:
+                    with open("/tmp/awesh_prompt_debug.log", "a") as f:
+                        f.write(f"Read input: {repr(line)}\n")
 
                 if not line.strip():
                     continue

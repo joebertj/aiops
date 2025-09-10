@@ -127,7 +127,7 @@ export OPENROUTER_API_KEY=sk-or-v1-abc...xyz # Your OpenRouter API key (truncate
 export OPENROUTER_MODEL=anthropic/claude-3-sonnet
 
 # Display Options  
-export VERBOSE=1              # 0=silent, 1=show AI status+debug, 2+=more verbose (default: 1)
+export VERBOSE=1              # 0=silent, 1=info, 2=debug (default: 1)
 
 # File Agent Options
 export FILE_AGENT_ENABLED=1           # 1=enabled, 0=disabled (default: 1)
@@ -156,9 +156,12 @@ awes            # Show verbose status (API provider, model, debug state)
 awea            # Show current AI provider and model
 
 # Verbose Debug Control
-awev            # Show debug logging status
-awev on         # Enable debug logging
-awev off        # Disable debug logging
+awev            # Show verbose level status
+awev 0          # Set verbose level 0 (silent)
+awev 1          # Set verbose level 1 (info)
+awev 2          # Set verbose level 2 (debug)
+awev on         # Enable verbose logging (level 1)
+awev off        # Disable verbose logging (level 0)
 
 # AI Provider Switching
 awea openai     # Switch to OpenAI (GPT models)
