@@ -18,6 +18,7 @@ awesh/command_safety.py
 awesh/config.py
 awesh/main.py
 awesh/policy.py
+awesh/process_monitor.py
 awesh/prompt_manager.py
 awesh/rag_system.py
 awesh/router.py
