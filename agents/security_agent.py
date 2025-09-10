@@ -233,6 +233,102 @@ class SecurityAgent(BaseAgent):
             metadata={"security_action": "passed", "checks": ["command_safety", "sensitive_data", "policy"]}
         )
     
+    def clear_for_ai_processing(self, data: str) -> tuple[bool, str]:
+        """
+        Clear data for AI processing by checking for sensitive information.
+        Used by ProcessMonitor and other agents before sending data to AI.
+        
+        Returns:
+            tuple[bool, str]: (approved, sanitized_data)
+        """
+        try:
+            # Check for sensitive data using existing filter
+            if self.sensitive_filter:
+                # Use the existing sensitive data filter
+                sanitized = self.sensitive_filter.filter_sensitive_data(data)
+                
+                # If data was modified, it contained sensitive information
+                if sanitized != data:
+                    # Check if it's safe to proceed with sanitized data
+                    if "[REDACTED]" in sanitized or "[FILTERED]" in sanitized:
+                        # Data was sanitized - approve with sanitized version
+                        return True, sanitized
+                    else:
+                        # Data was modified but not properly sanitized - deny
+                        return False, "[SECURITY CLEARANCE DENIED - SENSITIVE DATA DETECTED]"
+                else:
+                    # No sensitive data found - approve original data
+                    return True, data
+            
+            # Fallback: Use basic sensitive pattern check
+            for pattern, desc in self.compiled_sensitive_patterns:
+                if pattern.search(data):
+                    # Found sensitive data - deny
+                    return False, f"[SECURITY CLEARANCE DENIED - {desc.upper()} DETECTED]"
+            
+            # No sensitive data found - approve
+            return True, data
+            
+        except Exception as e:
+            # Error in security check - deny by default for safety
+            return False, f"[SECURITY CLEARANCE DENIED - ERROR: {str(e)}]"
+    
+    def vet_process_information(self, process_data: dict) -> tuple[bool, dict]:
+        """
+        Vet process information from ProcessAgent for sensitive data.
+        This is separate from frontend prompt processing.
+        
+        Args:
+            process_data: Dictionary containing process information
+                - pid: Process ID
+                - name: Process name
+                - cmdline: Full command line
+                - user: Process user
+                - group: Process group
+                - etc.
+        
+        Returns:
+            tuple[bool, dict]: (approved, sanitized_process_data)
+        """
+        try:
+            # Extract command line for sensitive data check
+            cmdline = process_data.get('cmdline', '')
+            
+            # Check command line for sensitive data
+            approved, sanitized_cmdline = self.clear_for_ai_processing(cmdline)
+            
+            if not approved:
+                # Sensitive data detected in command line
+                return False, {
+                    'pid': process_data.get('pid', 0),
+                    'name': process_data.get('name', 'unknown'),
+                    'cmdline': '[SECURITY BLOCKED - SENSITIVE DATA DETECTED]',
+                    'user': process_data.get('user', 'unknown'),
+                    'group': process_data.get('group', 'unknown'),
+                    'security_status': 'BLOCKED',
+                    'security_reason': 'Command line contains sensitive data'
+                }
+            
+            # Create sanitized process data
+            sanitized_data = process_data.copy()
+            sanitized_data['cmdline'] = sanitized_cmdline
+            sanitized_data['security_status'] = 'CLEARED'
+            sanitized_data['security_reason'] = 'Process data cleared for AI analysis'
+            
+            return True, sanitized_data
+            
+        except Exception as e:
+            # Error in security check - deny by default for safety
+            return False, {
+                'pid': process_data.get('pid', 0),
+                'name': process_data.get('name', 'unknown'),
+                'cmdline': '[SECURITY BLOCKED - ERROR]',
+                'user': process_data.get('user', 'unknown'),
+                'group': process_data.get('group', 'unknown'),
+                'security_status': 'BLOCKED',
+                'security_reason': f'Security check error: {str(e)}'
+            }
+    
     def get_help(self) -> str:
         """Get help text for the security agent"""
         return """

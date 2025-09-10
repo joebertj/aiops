@@ -882,7 +882,7 @@ int main() {
     
     // Start backend silently
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
-    printf("💡 Type 'aweh' to see available control commands\n\n");
+    printf("💡 Type 'aweh' to see available control commands\n");
     
     if (start_backend() != 0) {
         state.ai_status = AI_FAILED;
@@ -897,6 +897,8 @@ int main() {
     // Main shell loop
     char* line;
     char prompt[512];  // Increased size for full path
+    
+    // Initial prompt will be generated in the main loop
     
     while (1) {
         // Get username and hostname for prompt
