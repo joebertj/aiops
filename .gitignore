@@ -1,0 +1,84 @@
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Binaries and executables
+*.exe
+*.out
+*.app
+awesh
+*.o
+*.a
+*.so
+*.dylib
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+.DS_Store
+Thumbs.db
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+.env
+.env.local
+.env.production
+secrets/
+credentials/
+config/secrets/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+awesh_rag_chroma/
+awesh_process_monitor_chroma/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
