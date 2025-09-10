@@ -22,8 +22,10 @@ static char socket_path[512];
 void get_git_branch(char* branch, size_t size);
 void get_kubectl_context(char* context, size_t size);
 void get_kubectl_namespace(char* namespace, size_t size);
-char* parse_vi_mode(const char* input);
+char* parse_ai_mode(const char* input);
+void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
+int send_to_backend(const char* query, char* response, size_t response_size);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -149,54 +151,16 @@ void get_kubectl_namespace(char* namespace, size_t size) {
     namespace[size - 1] = '\0';
 }
 
-// Parse vi-style modes: edit mode vs command mode
-char* parse_vi_mode(const char* input) {
-    // Keywords that indicate edit mode (informational queries)
-    const char* edit_keywords[] = {
-        "what", "how", "why", "when", "where", "which", "who",
-        "is", "are", "was", "were", "can", "could", "should", "would",
-        "explain", "describe", "tell me", "show me", "help me",
-        "better than", "vs", "versus", "compare", "difference",
-        "meaning", "definition", "example", "tutorial", "guide",
-        NULL
-    };
-    
-    // Convert input to lowercase for comparison
-    char* lower_input = strdup(input);
-    for (int i = 0; lower_input[i]; i++) {
-        lower_input[i] = tolower(lower_input[i]);
-    }
-    
-    // Check for edit mode keywords
-    for (int i = 0; edit_keywords[i]; i++) {
-        if (strstr(lower_input, edit_keywords[i]) != NULL) {
-            free(lower_input);
-            return "edit";
-        }
-    }
-    
-    // Check for question marks (informational queries)
-    if (strchr(input, '?') != NULL) {
-        free(lower_input);
-        return "edit";
-    }
-    
-    // Check for natural language patterns (no command structure)
-    if (strchr(input, ' ') != NULL && 
-        strchr(input, '/') == NULL && 
-        strchr(input, '|') == NULL && 
-        strchr(input, '&') == NULL &&
-        strchr(input, ';') == NULL &&
-        strchr(input, '>') == NULL &&
-        strchr(input, '<') == NULL) {
-        // Multiple words but no shell operators - likely informational
-        free(lower_input);
-        return "edit";
-    }
-    
-    free(lower_input);
-    return "command";  // Default to command mode
+// AI-driven mode detection: Let AI decide command vs edit mode
+char* parse_ai_mode(const char* input) {
+    // Suppress unused parameter warning
+    (void)input;
+    // For now, send everything to AI for mode detection
+    // AI will return "awesh_cmd: <command>" or "awesh_edit: <edit>"
+    return "ai_detect";  // Let AI decide
 }
+
+// Functions will be defined after state and constants
 
 // Handle AI query in edit mode (simplified)
 void handle_ai_query(const char* query) {
@@ -224,6 +188,76 @@ typedef struct {
 } awesh_state_t;
 
 static awesh_state_t state = {0, -1, AI_LOADING, 1};
+
+// Send query to backend and get response
+int send_to_backend(const char* query, char* response, size_t response_size) {
+    if (state.socket_fd < 0) {
+        return -1;  // No backend connection
+    }
+    
+    // Send query to backend
+    char buffer[MAX_CMD_LEN];
+    snprintf(buffer, sizeof(buffer), "QUERY:%s", query);
+    
+    if (send(state.socket_fd, buffer, strlen(buffer), 0) < 0) {
+        return -1;
+    }
+    
+    // Read response with timeout
+    fd_set readfds;
+    struct timeval timeout;
+    FD_ZERO(&readfds);
+    FD_SET(state.socket_fd, &readfds);
+    timeout.tv_sec = 30;  // 30 second timeout for AI responses
+    timeout.tv_usec = 0;
+    
+    if (select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
+        ssize_t bytes_received = recv(state.socket_fd, response, response_size - 1, 0);
+        if (bytes_received > 0) {
+            response[bytes_received] = '\0';
+            return 0;  // Success
+        }
+    }
+    
+    return -1;  // Timeout or error
+}
+
+// Handle AI mode detection: Let AI decide command vs edit mode
+void handle_ai_mode_detection(const char* input) {
+    if (state.ai_status != AI_READY) {
+        printf("🤖 AI not ready. Status: %s\n", 
+               state.ai_status == AI_LOADING ? "Loading..." : "Failed");
+        return;
+    }
+    
+    // Send to backend for AI mode detection
+    char response[MAX_RESPONSE_LEN];
+    if (send_to_backend(input, response, sizeof(response)) == 0) {
+        // Parse AI response for mode detection
+        if (strncmp(response, "awesh_cmd:", 10) == 0) {
+            // AI determined this is a command - extract and execute
+            char* command = response + 10;
+            // Skip leading whitespace
+            while (*command == ' ' || *command == '\t') command++;
+            
+            printf("🔧 AI Command: %s\n", command);
+            // Execute the command
+            system(command);
+        } else if (strncmp(response, "awesh_edit:", 11) == 0) {
+            // AI determined this is edit mode - just display
+            char* edit_content = response + 11;
+            // Skip leading whitespace
+            while (*edit_content == ' ' || *edit_content == '\t') edit_content++;
+            
+            printf("📝 AI Edit Mode: %s\n", edit_content);
+        } else {
+            // Fallback: display raw response
+            printf("%s\n", response);
+        }
+    } else {
+        printf("❌ Failed to get AI response\n");
+    }
+}
 
 void load_config() {
     // Read ~/.aweshrc for configuration
@@ -881,21 +915,21 @@ int main() {
         // Add to history
         add_history(line);
         
-        // Parse vi-style modes: edit mode vs command mode
-        char* mode = parse_vi_mode(line);
+        // AI-driven mode detection: Let AI decide command vs edit mode
+        char* mode = parse_ai_mode(line);
         
-        // Handle command - priority order with mode awareness
+        // Handle command - priority order with AI mode detection
         if (is_awesh_command(line)) {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
             handle_builtin(line);
         } else if (is_interactive_bash_command(line)) {
             handle_interactive_bash(line);
-        } else if (strcmp(mode, "edit") == 0) {
-            // Edit mode: Send directly to AI backend for informational queries
-            handle_ai_query(line);
+        } else if (strcmp(mode, "ai_detect") == 0) {
+            // AI mode detection: Send to backend for AI to decide
+            handle_ai_mode_detection(line);
         } else {
-            // Command mode: Try bash directly first, send to backend only on failure
+            // Fallback: Try bash directly first, send to backend only on failure
             handle_bash_with_ai_fallback(line);
         }
         
