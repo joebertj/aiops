@@ -13,3 +13,8 @@ psutil>=5.9.0
 httpx>=0.24.0
 websockets>=11.0.0
 jsonschema>=4.17.0
+
+# Vector database and RAG system dependencies
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
+numpy>=1.24.0

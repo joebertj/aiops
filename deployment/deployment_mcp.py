@@ -17,11 +17,66 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 AWESH_DIR = PROJECT_ROOT / "awesh"
 BACKEND_DIR = PROJECT_ROOT / "awesh_backend"
+VENV_DIR = PROJECT_ROOT / "venv"
 INSTALL_PATH = Path.home() / ".local" / "bin" / "awesh"
 
 def log(message):
     """Log a message"""
     print(message)
+
+def setup_venv():
+    """Setup virtual environment for awesh"""
+    try:
+        if not VENV_DIR.exists():
+            log("🐍 Creating virtual environment...")
+            result = subprocess.run([
+                "python3", "-m", "venv", str(VENV_DIR)
+            ], capture_output=True, text=True, cwd=PROJECT_ROOT)
+            
+            if result.returncode != 0:
+                log(f"❌ Failed to create venv: {result.stderr}")
+                return False
+            
+            log("✅ Virtual environment created")
+        else:
+            log("✅ Virtual environment already exists")
+        
+        # Get venv python path
+        if os.name == 'nt':  # Windows
+            venv_python = VENV_DIR / "Scripts" / "python.exe"
+            venv_pip = VENV_DIR / "Scripts" / "pip.exe"
+        else:  # Unix/Linux/macOS
+            venv_python = VENV_DIR / "bin" / "python"
+            venv_pip = VENV_DIR / "bin" / "pip"
+        
+        # Upgrade pip in venv
+        log("📦 Upgrading pip in virtual environment...")
+        result = subprocess.run([
+            str(venv_python), "-m", "pip", "install", "--upgrade", "pip"
+        ], capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            log(f"⚠️ Failed to upgrade pip: {result.stderr}")
+        
+        return True
+        
+    except Exception as e:
+        log(f"❌ Error setting up venv: {e}")
+        return False
+
+def get_venv_python():
+    """Get the python executable path from venv"""
+    if os.name == 'nt':  # Windows
+        return VENV_DIR / "Scripts" / "python.exe"
+    else:  # Unix/Linux/macOS
+        return VENV_DIR / "bin" / "python"
+
+def get_venv_pip():
+    """Get the pip executable path from venv"""
+    if os.name == 'nt':  # Windows
+        return VENV_DIR / "Scripts" / "pip.exe"
+    else:  # Unix/Linux/macOS
+        return VENV_DIR / "bin" / "pip"
 
 def syntax_check():
     """Check C and Python syntax"""
@@ -66,6 +121,11 @@ def syntax_check():
 def build_project(clean=False):
     """Build awesh project"""
     try:
+        # Setup virtual environment first
+        if not setup_venv():
+            log("❌ Failed to setup virtual environment")
+            return False
+        
         if clean:
             log("🧹 Cleaning build...")
             result = subprocess.run(["make", "clean"], capture_output=True, text=True, cwd=AWESH_DIR)
@@ -82,9 +142,10 @@ def build_project(clean=False):
             log(f"❌ C build failed:\n{result.stderr}")
             return False
         
-        log("📦 Installing Python backend...")
+        log("📦 Installing Python backend in virtual environment...")
+        venv_pip = get_venv_pip()
         result = subprocess.run([
-            "pip3", "install", "--user", "-e", "."
+            str(venv_pip), "install", "-e", "."
         ], capture_output=True, text=True, cwd=PROJECT_ROOT)
         
         if result.returncode == 0:
@@ -220,9 +281,10 @@ def test_backend_sanity():
     log("🧪 Testing backend socket communication...")
     
     try:
-        # Start backend in background
+        # Start backend in background using venv python
+        venv_python = get_venv_python()
         backend_proc = subprocess.Popen([
-            "python3", "-m", "awesh_backend"
+            str(venv_python), "-m", "awesh_backend"
         ], cwd=PROJECT_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         # Wait for backend to start
@@ -373,6 +435,49 @@ def git_commit_and_push():
         log(f"❌ Git operation error: {e}")
         return False
 
+def install_dependencies():
+    """Install all dependencies in virtual environment"""
+    try:
+        # Setup virtual environment first
+        if not setup_venv():
+            log("❌ Failed to setup virtual environment")
+            return False
+        
+        log("📦 Installing dependencies in virtual environment...")
+        venv_pip = get_venv_pip()
+        
+        # Install from requirements.txt
+        requirements_file = AWESH_DIR / "requirements.txt"
+        if requirements_file.exists():
+            result = subprocess.run([
+                str(venv_pip), "install", "-r", str(requirements_file)
+            ], capture_output=True, text=True, cwd=PROJECT_ROOT)
+            
+            if result.returncode == 0:
+                log("✅ Dependencies installed from requirements.txt")
+            else:
+                log(f"❌ Failed to install dependencies: {result.stderr}")
+                return False
+        else:
+            log("⚠️ No requirements.txt found")
+        
+        # Install the project itself
+        result = subprocess.run([
+            str(venv_pip), "install", "-e", "."
+        ], capture_output=True, text=True, cwd=PROJECT_ROOT)
+        
+        if result.returncode == 0:
+            log("✅ Project installed in virtual environment")
+        else:
+            log(f"❌ Failed to install project: {result.stderr}")
+            return False
+        
+        return True
+        
+    except Exception as e:
+        log(f"❌ Error installing dependencies: {e}")
+        return False
+
 def build_ci(skip_tests=False):
     """CI Build Pipeline: checks, bins, git push"""
     log("🚀 Starting CI build pipeline...")
@@ -470,6 +575,9 @@ def main():
         log("  build          - CI pipeline: checks, bins, git push")
         log("  install        - Deploy pipeline: git pull, build, kills procs, deploy")
         log("  clean_install  - Build + deploy + git push (no git pull)")
+        log("\nEnvironment Commands:")
+        log("  setup_venv     - Create virtual environment")
+        log("  install_deps   - Install all dependencies in venv")
         log("\nIndividual Commands:")
         log("  syntax_check   - Check C and Python syntax")
         log("  build_only     - Build awesh (incremental)")
@@ -491,6 +599,12 @@ def main():
         install_deploy(skip_tests=False)
     elif command == "clean_install":
         clean_install()
+    
+    # Environment Commands
+    elif command == "setup_venv":
+        setup_venv()
+    elif command == "install_deps":
+        install_dependencies()
     
     # Individual Commands
     elif command == "syntax_check":
