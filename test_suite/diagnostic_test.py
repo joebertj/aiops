@@ -128,7 +128,7 @@ class DiagnosticTester:
             import tempfile
             
             # Test creating shared memory
-            shm_name = f"/awesh_security_status_{os.getenv('USER', 'unknown')}"
+            shm_name = f"/dev/shm/awesh_security_status_{os.getenv('USER', 'unknown')}"
             
             try:
                 # Try to create shared memory
