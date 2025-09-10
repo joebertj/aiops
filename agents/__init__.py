@@ -16,6 +16,7 @@ If any agent fails, processing stops immediately and the user is informed.
 
 from .base_agent import BaseAgent
 from .security_agent import SecurityAgent
+from .process_agent import ProcessAgent
 from .kubernetes_agent import KubernetesAgent
 from .container_agent import ContainerAgent
 from .command_router_agent import CommandRouterAgent
@@ -24,7 +25,8 @@ from .agent_processor import AgentProcessor
 
 __all__ = [
     'BaseAgent',
-    'SecurityAgent', 
+    'SecurityAgent',
+    'ProcessAgent',  # Add process monitoring agent
     'KubernetesAgent',
     'ContainerAgent',
     'CommandRouterAgent',

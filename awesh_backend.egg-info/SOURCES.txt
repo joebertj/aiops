@@ -7,6 +7,7 @@ agents/base_agent.py
 agents/command_router_agent.py
 agents/container_agent.py
 agents/kubernetes_agent.py
+agents/process_agent.py
 agents/response_parser.py
 agents/security_agent.py
 awesh/__init__.py

@@ -6,6 +6,12 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 
 **💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 
+## 🚀 awesh - AI-Aware Interactive Shell
+
+![awesh](awesh/awesh.png)
+
+**awesh** is the centerpiece of this toolkit - an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations.
+
 ## 📖 Related Reading
 
 **[AIOps: Artificial Intelligence for IT Operations](https://www.amazon.com/dp/B0FNKKXFPQ)** - A comprehensive guide to the AI revolution in IT operations, documenting real-world transformations and practical implementation strategies. Written by the creator of this toolkit, it provides the theoretical foundation and strategic insights behind these tools.

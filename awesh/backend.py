@@ -23,6 +23,7 @@ from sensitive_data_filter import SensitiveDataFilter
 # Import agent system
 from agents import (
     SecurityAgent, 
+    ProcessAgent,  # Add process monitoring agent
     KubernetesAgent, 
     ContainerAgent, 
     CommandRouterAgent,
@@ -81,6 +82,7 @@ class AweshBackend:
             # Create agents in priority order
             agents = [
                 SecurityAgent(),
+                ProcessAgent(),  # Add process monitoring agent
                 KubernetesAgent(),
                 ContainerAgent(),
                 CommandRouterAgent()
