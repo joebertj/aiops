@@ -197,13 +197,15 @@ Remember: Terminal users want to execute and see results. Give them the exact co
         
         try:
             # Prepare API parameters - handle different model constraints
+            # Use MODEL environment variable if set, otherwise fall back to config
+            model_name = os.getenv('MODEL', self.config.model)
             api_params = {
-                "model": self.config.model,
+                "model": model_name,
                 "messages": messages,
             }
             
             # Handle model-specific parameters
-            if self.config.model.startswith('gpt-5') or self.config.model.startswith('o1'):
+            if model_name.startswith('gpt-5') or model_name.startswith('o1'):
                 # GPT-5 and o1 models have specific constraints
                 api_params["max_completion_tokens"] = self.config.max_tokens
                 # GPT-5 only supports temperature=1 (default), so don't set it
@@ -219,7 +221,7 @@ Remember: Terminal users want to execute and see results. Give them the exact co
                 try:
                     # Streaming response
                     api_params["stream"] = True
-                    debug_log(f"Starting streaming request with model {self.config.model}")
+                    debug_log(f"Starting streaming request with model {model_name}")
                     stream = await self.client.chat.completions.create(**api_params)
                     
                     chunk_count = 0
@@ -249,7 +251,7 @@ Remember: Terminal users want to execute and see results. Give them the exact co
             
             # Non-streaming response (either by config or fallback)
             api_params["stream"] = False
-            debug_log(f"Using non-streaming request with model {self.config.model}")
+            debug_log(f"Using non-streaming request with model {model_name}")
             response = await self.client.chat.completions.create(**api_params)
             
             content = response.choices[0].message.content
