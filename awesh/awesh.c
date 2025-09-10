@@ -683,19 +683,73 @@ void handle_sigint(int sig __attribute__((unused))) {
 }
 
 void cleanup_and_exit(int sig __attribute__((unused))) {
-    if (state.socket_fd >= 0) {
-        close(state.socket_fd);
+    if (state.verbose >= 1) {
+        printf("\n🔄 CLEANUP: Shutting down awesh...\n");
     }
+    
+    // Cleanup backend connection
+    if (state.socket_fd >= 0) {
+        if (state.verbose >= 2) {
+            printf("🔌 CLEANUP: Closing backend socket\n");
+        }
+        close(state.socket_fd);
+        state.socket_fd = -1;
+    }
+    
+    // Cleanup backend process
     if (state.backend_pid > 0) {
+        if (state.verbose >= 1) {
+            printf("🐍 CLEANUP: Terminating backend process (PID: %d)\n", state.backend_pid);
+        }
+        
+        // Send SIGTERM first (graceful shutdown)
         kill(state.backend_pid, SIGTERM);
-        waitpid(state.backend_pid, NULL, 0);
+        
+        // Wait up to 3 seconds for graceful shutdown
+        int status;
+        pid_t result = waitpid(state.backend_pid, &status, WNOHANG);
+        if (result == 0) {
+            // Process still running, wait a bit
+            sleep(1);
+            result = waitpid(state.backend_pid, &status, WNOHANG);
+            if (result == 0) {
+                // Still running, force kill
+                if (state.verbose >= 1) {
+                    printf("⚠️ CLEANUP: Backend didn't respond to SIGTERM, sending SIGKILL\n");
+                }
+                kill(state.backend_pid, SIGKILL);
+                waitpid(state.backend_pid, &status, 0);
+            }
+        }
+        
+        if (state.verbose >= 2) {
+            printf("✅ CLEANUP: Backend process terminated\n");
+        }
+    }
+    
+    // Cleanup Security Agent
+    if (state.verbose >= 1) {
+        printf("🔒 CLEANUP: Terminating Security Agent\n");
+    }
+    cleanup_security_agent_socket();
+    
+    // Cleanup socket files
+    if (state.verbose >= 2) {
+        printf("🧹 CLEANUP: Removing socket files\n");
     }
     unlink(socket_path);
     
-    // Cleanup Security Agent socket
-    cleanup_security_agent_socket();
+    // Cleanup any remaining child processes
+    if (state.verbose >= 2) {
+        printf("🧹 CLEANUP: Cleaning up any remaining child processes\n");
+    }
     
+    if (state.verbose >= 1) {
+        printf("✅ CLEANUP: Shutdown complete. Goodbye!\n");
+    } else {
     printf("\nGoodbye!\n");
+    }
+    
     exit(0);
 }
 
@@ -1195,7 +1249,9 @@ int main() {
     } else if (security_agent_pid < 0) {
         printf("⚠️ Warning: Could not start Security Agent\n");
     } else {
-        printf("🔒 Security Agent (awesh_sec) started (PID: %d)\n", security_agent_pid);
+        if (state.verbose >= 1) {
+            printf("🔒 Security Agent (awesh_sec) started (PID: %d)\n", security_agent_pid);
+        }
         // Don't wait for Security Agent - let it initialize in background
     }
     
@@ -1218,10 +1274,14 @@ int main() {
         exit(0);
     } else if (backend_pid > 0) {
         state.backend_pid = backend_pid;
-        printf("🐍 Backend (Python) started (PID: %d)\n", backend_pid);
+        if (state.verbose >= 1) {
+            printf("🐍 Backend (Python) started (PID: %d)\n", backend_pid);
+        }
         // Don't wait for backend - let it initialize in background
     } else {
-        printf("⚠️ Warning: Could not start backend\n");
+        if (state.verbose >= 1) {
+            printf("⚠️ Warning: Could not start backend\n");
+        }
         state.ai_status = AI_FAILED;
     }
     
@@ -1281,7 +1341,7 @@ int main() {
             strcat(context_parts, git_branch);
         }
         
-        // Get security agent status for first line
+        // Get security agent status
         char security_status[128] = "";
         get_security_agent_status(security_status, sizeof(security_status));
         
@@ -1290,9 +1350,35 @@ int main() {
         char security_emoji[8];
         get_health_status_emojis(backend_emoji, security_emoji);
         
-        // Generate secure prompt with health status emojis
-        snprintf(prompt, sizeof(prompt), "%s\n%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
-                 security_status, backend_emoji, security_emoji, user_color, username, hostname, cwd, context_parts);
+        // Build security context part with color coding
+        char security_context[256] = "";
+        if (strlen(security_status) > 0) {
+            // Check if it's a high threat (starts with "🔴 HIGH:")
+            if (strncmp(security_status, "🔴 HIGH:", 8) == 0) {
+                // High threat - color in red, replace 🔴 with 👹 for rogue processes
+                char* rogue_emoji = "👹";
+                char* threat_text = strstr(security_status, "rogue_process");
+                if (threat_text) {
+                    // Replace 🔴 HIGH: with 👹 ROGUE: for rogue processes
+                    char rogue_status[128];
+                    snprintf(rogue_status, sizeof(rogue_status), "👹 ROGUE:%s", threat_text);
+                    snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", rogue_status);
+                } else {
+                    // Other high threats keep red circle
+                    snprintf(security_context, sizeof(security_context), ":\033[31m%s\033[0m", security_status);
+                }
+            } else if (strncmp(security_status, "🟡 MEDIUM:", 10) == 0) {
+                // Medium threat - color in yellow
+                snprintf(security_context, sizeof(security_context), ":\033[33m%s\033[0m", security_status);
+            } else {
+                // Low threat or no threat - normal color
+                snprintf(security_context, sizeof(security_context), ":%s", security_status);
+            }
+        }
+        
+        // Generate secure prompt with integrated security status
+        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s\n> ",
+                 backend_emoji, security_emoji, user_color, username, hostname, cwd, context_parts, security_context);
         
         // Debug total prompt generation time
         debug_perf("total prompt generation", prompt_start);
