@@ -3,19 +3,24 @@ CFLAGS = -Wall -Wextra -std=c99
 LIBS = -lreadline
 
 TARGET = awesh
+SECURITY_AGENT = security_agent
 SOURCE = awesh.c
+SECURITY_AGENT_SOURCE = security_agent.c
 BACKEND_PKG = ../awesh_backend
 
-all: $(TARGET) backend
+all: $(TARGET) $(SECURITY_AGENT) backend
 
 $(TARGET): $(SOURCE)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE) $(LIBS)
+
+$(SECURITY_AGENT): $(SECURITY_AGENT_SOURCE)
+	$(CC) $(CFLAGS) -o $(SECURITY_AGENT) $(SECURITY_AGENT_SOURCE)
 
 backend:
 	@echo "Backend package ready at $(BACKEND_PKG)"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(SECURITY_AGENT)
 
 install: $(TARGET) backend
 	@echo "Installing awesh to ~/.local/bin..."

@@ -20,10 +20,8 @@ from ai_client import AweshAIClient
 from command_safety import CommandSafetyFilter
 from sensitive_data_filter import SensitiveDataFilter
 
-# Import agent system
+# Import agent system (Security Agent now in C)
 from agents import (
-    SecurityAgent, 
-    ProcessAgent,  # Add process monitoring agent
     KubernetesAgent, 
     ContainerAgent, 
     CommandRouterAgent,
@@ -45,6 +43,9 @@ class AweshBackend:
         
         # Initialize agent system
         self.agent_processor = None
+        
+        # Security Agent communication (C process)
+        self.security_agent_socket = None
         
     async def initialize(self):
         """Initialize heavy AI components"""
@@ -78,10 +79,8 @@ class AweshBackend:
     def _initialize_agents(self):
         """Initialize the agent system"""
         try:
-            # Create agents in priority order
+            # Create agents in priority order (Security Agent now in C)
             agents = [
-                SecurityAgent(),
-                ProcessAgent(),  # Add process monitoring agent
                 KubernetesAgent(),
                 ContainerAgent(),
                 CommandRouterAgent()
@@ -109,6 +108,46 @@ class AweshBackend:
             else:
                 print(f"⚠️ Agent system initialization failed: {e}")
             self.agent_processor = None
+    
+    def _connect_to_security_agent(self):
+        """Connect to C Security Agent"""
+        try:
+            home = os.path.expanduser("~")
+            socket_path = f"{home}/.awesh_security_agent.sock"
+            
+            self.security_agent_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.security_agent_socket.connect(socket_path)
+            return True
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: Security Agent connection failed: {e}")
+            return False
+    
+    def _request_security_clearance(self, prompt):
+        """Request security clearance from C Security Agent"""
+        if not self.security_agent_socket:
+            if not self._connect_to_security_agent():
+                return prompt  # Fallback to original prompt
+        
+        try:
+            # Send security check request
+            request = f"SECURITY_CHECK:{prompt}"
+            self.security_agent_socket.send(request.encode())
+            
+            # Read response
+            response = self.security_agent_socket.recv(4096).decode()
+            
+            if response.startswith("SECURITY_OK:"):
+                return response[12:]  # Return filtered prompt
+            elif response.startswith("SECURITY_BLOCKED:"):
+                return response[17:]  # Return blocked message
+            else:
+                return prompt  # Fallback
+                
+        except Exception as e:
+            if os.getenv('VERBOSE', '0') == '2':
+                print(f"🔒 DEBUG: Security Agent communication failed: {e}")
+            return prompt  # Fallback
     
     # Interactive command detection moved to C frontend
     
@@ -273,9 +312,12 @@ Process this and respond appropriately."""
     async def process_ai_query(self, query: str) -> str:
         """Process AI query for mode detection"""
         try:
+            # Request security clearance from C Security Agent
+            cleared_query = self._request_security_clearance(query)
+            
             # Use agent system to process the query
             if self.agent_processor:
-                result = await self.agent_processor.process_prompt(query, {})
+                result = await self.agent_processor.process_prompt(cleared_query, {})
                 if result.handled:
                     return result.response
             

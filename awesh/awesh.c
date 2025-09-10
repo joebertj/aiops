@@ -21,10 +21,9 @@
 
 static char socket_path[512];
 
-// Shared memory for ProcessAgent status
-#define PROCESS_STATUS_SIZE 256
-static char* process_status_memory = NULL;
-static int process_status_fd = -1;
+// Security Agent socket communication
+static int security_agent_socket_fd = -1;
+static char security_agent_socket_path[512];
 
 // Function declarations
 void get_git_branch(char* branch, size_t size);
@@ -34,9 +33,9 @@ char* parse_ai_mode(const char* input);
 void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
 int send_to_backend(const char* query, char* response, size_t response_size);
-void get_process_agent_status(char* status, size_t size);
-int init_process_status_memory(void);
-void cleanup_process_status_memory(void);
+void get_security_agent_status(char* status, size_t size);
+int init_security_agent_socket(void);
+void cleanup_security_agent_socket(void);
 void debug_perf(const char* operation, long start_time);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
@@ -206,59 +205,92 @@ void debug_perf(const char* operation, long start_time) {
 }
 
 // Get process agent status for prompt display
-int init_process_status_memory(void) {
-    // Create shared memory for ProcessAgent status
-    const char* shm_name = "/awesh_process_status";
-    
-    // Create shared memory object
-    process_status_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
-    if (process_status_fd == -1) {
+int init_security_agent_socket(void) {
+    // Initialize Security Agent socket path
+    const char* home = getenv("HOME");
+    if (!home) return -1;
+
+    snprintf(security_agent_socket_path, sizeof(security_agent_socket_path),
+             "%s/.awesh_security_agent.sock", home);
+
+    // Remove existing socket
+    unlink(security_agent_socket_path);
+
+    // Create Security Agent socket
+    security_agent_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (security_agent_socket_fd < 0) {
         return -1;
     }
-    
-    // Set size
-    if (ftruncate(process_status_fd, PROCESS_STATUS_SIZE) == -1) {
-        close(process_status_fd);
+
+    // Bind socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
+
+    if (bind(security_agent_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(security_agent_socket_fd);
         return -1;
     }
-    
-    // Map shared memory
-    process_status_memory = mmap(NULL, PROCESS_STATUS_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, process_status_fd, 0);
-    if (process_status_memory == MAP_FAILED) {
-        close(process_status_fd);
+
+    // Listen for Security Agent connections
+    if (listen(security_agent_socket_fd, 1) < 0) {
+        close(security_agent_socket_fd);
         return -1;
     }
-    
-    // Initialize with empty status
-    memset(process_status_memory, 0, PROCESS_STATUS_SIZE);
-    
+
     return 0;
 }
 
-void cleanup_process_status_memory(void) {
-    if (process_status_memory != NULL && process_status_memory != MAP_FAILED) {
-        munmap(process_status_memory, PROCESS_STATUS_SIZE);
-        process_status_memory = NULL;
+void cleanup_security_agent_socket(void) {
+    if (security_agent_socket_fd != -1) {
+        close(security_agent_socket_fd);
+        security_agent_socket_fd = -1;
     }
-    if (process_status_fd != -1) {
-        close(process_status_fd);
-        process_status_fd = -1;
-    }
-    // Remove shared memory object
-    shm_unlink("/awesh_process_status");
+    unlink(security_agent_socket_path);
 }
 
-void get_process_agent_status(char* status, size_t size) {
-    // Read from shared memory - instant access, no backend communication
-    if (process_status_memory == NULL || process_status_memory == MAP_FAILED) {
+void get_security_agent_status(char* status, size_t size) {
+    // Read from Security Agent socket - non-blocking
+    if (security_agent_socket_fd < 0) {
         strncpy(status, "", size - 1);
         status[size - 1] = '\0';
         return;
     }
-    
-    // Copy status from shared memory
-    strncpy(status, process_status_memory, size - 1);
-    status[size - 1] = '\0';
+
+    // Check if Security Agent has data available (non-blocking)
+    fd_set readfds;
+    struct timeval timeout;
+    FD_ZERO(&readfds);
+    FD_SET(security_agent_socket_fd, &readfds);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 1000;  // 1ms timeout - very short
+
+    if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
+        // Accept Security Agent connection
+        int client_fd = accept(security_agent_socket_fd, NULL, NULL);
+        if (client_fd >= 0) {
+            // Read status from Security Agent
+            char response[256];
+            ssize_t bytes = recv(client_fd, response, sizeof(response) - 1, 0);
+            if (bytes > 0) {
+                response[bytes] = '\0';
+                strncpy(status, response, size - 1);
+                status[size - 1] = '\0';
+            } else {
+                strncpy(status, "", size - 1);
+                status[size - 1] = '\0';
+            }
+            close(client_fd);
+        } else {
+            strncpy(status, "", size - 1);
+            status[size - 1] = '\0';
+        }
+    } else {
+        // No data available - use empty status
+        strncpy(status, "", size - 1);
+        status[size - 1] = '\0';
+    }
 }
 
 // Send query to backend and get response
@@ -447,8 +479,8 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
     }
     unlink(socket_path);
     
-    // Cleanup shared memory
-    cleanup_process_status_memory();
+    // Cleanup Security Agent socket
+    cleanup_security_agent_socket();
     
     printf("\nGoodbye!\n");
     exit(0);
@@ -920,9 +952,22 @@ int main() {
     // Load configuration
     load_config();
     
-    // Initialize shared memory for ProcessAgent status
-    if (init_process_status_memory() != 0) {
-        printf("⚠️ Warning: Could not initialize ProcessAgent shared memory\n");
+    // Initialize Security Agent socket
+    if (init_security_agent_socket() != 0) {
+        printf("⚠️ Warning: Could not initialize Security Agent socket\n");
+    }
+    
+    // Start Security Agent as separate process
+    pid_t security_agent_pid = fork();
+    if (security_agent_pid == 0) {
+        // Child: start Security Agent
+        execl("./security_agent", "security_agent", NULL);
+        perror("Failed to start Security Agent");
+        exit(1);
+    } else if (security_agent_pid < 0) {
+        printf("⚠️ Warning: Could not start Security Agent\n");
+    } else {
+        printf("🔒 Security Agent started (PID: %d)\n", security_agent_pid);
     }
     
     // Set VERBOSE environment variable for backend
@@ -1002,23 +1047,23 @@ int main() {
             strcat(context_parts, git_branch);
         }
         
-        // Get process agent status for first line
-        char process_status[128] = "";
-        get_process_agent_status(process_status, sizeof(process_status));
+        // Get security agent status for first line
+        char security_status[128] = "";
+        get_security_agent_status(security_status, sizeof(security_status));
         
-        // Generate secure prompt with process agent status on first line
+        // Generate secure prompt with security agent status on first line
         switch (state.ai_status) {
             case AI_LOADING:
-                snprintf(prompt, sizeof(prompt), "%s\n🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
-                         process_status, user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n🤖:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
+                         security_status, user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_READY:
-                snprintf(prompt, sizeof(prompt), "%s\n🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
-                         process_status, user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n🧠:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
+                         security_status, user_color, username, hostname, cwd, context_parts);
                 break;
             case AI_FAILED:
-                snprintf(prompt, sizeof(prompt), "%s\n💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ", 
-                         process_status, user_color, username, hostname, cwd, context_parts);
+                snprintf(prompt, sizeof(prompt), "%s\n💀:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s\n> ",
+                         security_status, user_color, username, hostname, cwd, context_parts);
                 break;
         }
         
