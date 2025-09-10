@@ -58,7 +58,7 @@ class AweshShell:
             try:
                 # Show enhanced prompt with context information
                 try:
-                    prompt = self.prompt_manager.get_prompt(self.ai_ready)
+                    prompt = self.prompt_manager.get_prompt(self.ai_ready, "")
                 except Exception:
                     # Fallback to simple prompt if enhanced prompt fails
                     prompt = self.prompt_manager.get_simple_prompt(self.ai_ready)

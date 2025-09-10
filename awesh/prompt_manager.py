@@ -17,6 +17,13 @@ try:
 except ImportError:
     HAVE_PROCESS_MONITOR = False
 
+# Import RAG system for context enhancement
+try:
+    from .rag_system import enhance_prompt_with_context
+    HAVE_RAG_SYSTEM = True
+except ImportError:
+    HAVE_RAG_SYSTEM = False
+
 
 class PromptManager:
     """
@@ -227,6 +234,31 @@ class PromptManager:
         
         # Return two-line prompt: first line with context, second line just >
         return f"{first_line}\n>"
+    
+    def get_enhanced_prompt_with_rag(self, ai_ready: bool = False, user_input: str = "") -> str:
+        """
+        Get prompt with RAG-enhanced context for AI queries.
+        
+        Args:
+            ai_ready: Whether AI is ready
+            user_input: User's input to enhance with RAG context
+            
+        Returns:
+            Enhanced prompt with RAG context
+        """
+        # Get the base prompt
+        base_prompt = self.get_prompt(ai_ready, user_input)
+        
+        # If we have RAG system and user input, enhance with context
+        if HAVE_RAG_SYSTEM and user_input.strip():
+            try:
+                enhanced_input = enhance_prompt_with_context(user_input, max_context_length=300)
+                return f"{base_prompt}{enhanced_input}"
+            except Exception as e:
+                # Silently fail if RAG enhancement has issues
+                pass
+        
+        return base_prompt
     
     def _get_dynamic_prompt_parts(self, user_input: str) -> list:
         """
