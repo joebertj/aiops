@@ -1410,7 +1410,7 @@ int main() {
             const char* home = getenv("HOME");
             if (home) {
                 char socket_path[512];
-                snprintf(socket_path, sizeof(socket_path), "%s/.awesh_backend.sock", home);
+                snprintf(socket_path, sizeof(socket_path), "%s/.awesh.sock", home);
                 
                 int test_fd = socket(AF_UNIX, SOCK_STREAM, 0);
                 if (test_fd >= 0) {
