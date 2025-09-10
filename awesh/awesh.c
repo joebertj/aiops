@@ -150,7 +150,32 @@ int start_backend() {
     // Fork backend process
     state.backend_pid = fork();
     if (state.backend_pid == 0) {
-        // Child: start Python backend as module
+        // Child: start Python backend as module using virtual environment
+        const char* home = getenv("HOME");
+        char venv_python[512];
+        
+        // Try to use virtual environment Python first
+        if (home) {
+            snprintf(venv_python, sizeof(venv_python), "%s/AI/aiops/venv/bin/python3", home);
+            if (access(venv_python, X_OK) == 0) {
+                // Debug: write to a file to see if this path is being used
+                FILE *debug = fopen("/tmp/awesh_debug.log", "w");
+                if (debug) {
+                    fprintf(debug, "Using venv Python: %s\n", venv_python);
+                    fclose(debug);
+                }
+                execl(venv_python, "python3", "-m", "awesh_backend", NULL);
+            } else {
+                // Debug: write to a file to see if venv Python is not accessible
+                FILE *debug = fopen("/tmp/awesh_debug.log", "w");
+                if (debug) {
+                    fprintf(debug, "Venv Python not accessible: %s\n", venv_python);
+                    fclose(debug);
+                }
+            }
+        }
+        
+        // Fallback to system Python
         execl("/usr/bin/python3", "python3", "-m", "awesh_backend", NULL);
         perror("Failed to start backend");
         exit(1);
