@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -std=c99
 LIBS = -lreadline
 
 TARGET = awesh
-SECURITY_AGENT = security_agent
+SECURITY_AGENT = awesh_sec
 SOURCE = awesh.c
 SECURITY_AGENT_SOURCE = security_agent.c
 BACKEND_PKG = ../awesh_backend

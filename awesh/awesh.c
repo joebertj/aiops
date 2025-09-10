@@ -37,6 +37,9 @@ void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
 void debug_perf(const char* operation, long start_time);
+void check_child_process_health(void);
+int is_process_running(pid_t pid);
+void log_health_status(const char* process_name, pid_t pid, int is_running);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -201,6 +204,61 @@ void debug_perf(const char* operation, long start_time) {
     if (state.verbose >= 2) {
         long duration = get_time_ms() - start_time;
         fprintf(stderr, "🐛 DEBUG: %s took %ldms\n", operation, duration);
+    }
+}
+
+int is_process_running(pid_t pid) {
+    if (pid <= 0) return 0;
+    
+    // Use kill with signal 0 to check if process exists
+    return (kill(pid, 0) == 0);
+}
+
+void log_health_status(const char* process_name, pid_t pid, int is_running) {
+    if (state.verbose >= 1) {
+        if (is_running) {
+            if (state.verbose >= 2) {
+                fprintf(stderr, "💚 HEALTH: %s (PID: %d) is running\n", process_name, pid);
+            }
+        } else {
+            fprintf(stderr, "💀 HEALTH: %s (PID: %d) is not running\n", process_name, pid);
+        }
+    }
+}
+
+void check_child_process_health(void) {
+    // Check backend health
+    if (state.backend_pid > 0) {
+        int backend_running = is_process_running(state.backend_pid);
+        log_health_status("Backend", state.backend_pid, backend_running);
+        
+        if (!backend_running) {
+            if (state.verbose >= 1) {
+                fprintf(stderr, "⚠️ Backend process died, will attempt restart\n");
+            }
+            state.backend_pid = -1;
+            state.ai_status = AI_FAILED;
+        }
+    }
+    
+    // Check security agent health (we need to track its PID)
+    // For now, we'll check if the socket is still available
+    if (security_agent_socket_fd >= 0) {
+        // Try to accept a connection to test if security agent is alive
+        fd_set readfds;
+        struct timeval timeout;
+        FD_ZERO(&readfds);
+        FD_SET(security_agent_socket_fd, &readfds);
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 1000; // 1ms timeout
+        
+        if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) < 0) {
+            if (state.verbose >= 1) {
+                fprintf(stderr, "💀 HEALTH: Security Agent socket error, may have died\n");
+            }
+        } else if (state.verbose >= 2) {
+            fprintf(stderr, "💚 HEALTH: Security Agent socket is responsive\n");
+        }
     }
 }
 
@@ -463,10 +521,14 @@ void update_config_file(const char* key, const char* value) {
 
 void handle_sigint(int sig __attribute__((unused))) {
     // Ctrl+C should just return to prompt, not exit
+    // This prevents the signal from reaching child processes (backend, security agent)
     printf("\n");
     rl_on_new_line();
     rl_replace_line("", 0);
     rl_redisplay();
+    
+    // Don't propagate signal to child processes
+    // The signal is handled here and doesn't reach the backend
 }
 
 void cleanup_and_exit(int sig __attribute__((unused))) {
@@ -496,7 +558,10 @@ int start_backend() {
     // Fork backend process
     state.backend_pid = fork();
     if (state.backend_pid == 0) {
-        // Child: start Python backend as module using virtual environment
+        // Child: ignore SIGINT to prevent Ctrl+C from reaching backend
+        signal(SIGINT, SIG_IGN);
+        
+        // Start Python backend as module using virtual environment
         const char* home = getenv("HOME");
         char venv_python[512];
         
@@ -949,6 +1014,8 @@ int main() {
     signal(SIGINT, handle_sigint);     // Ctrl+C returns to prompt
     signal(SIGTERM, cleanup_and_exit); // SIGTERM exits cleanly
     
+    // Don't block SIGINT here - we want to handle it in the main process
+    
     // Load configuration
     load_config();
     
@@ -960,21 +1027,24 @@ int main() {
     // Start Security Agent as separate process (non-blocking)
     pid_t security_agent_pid = fork();
     if (security_agent_pid == 0) {
-        // Child: start Security Agent from ~/.local/bin
+        // Child: ignore SIGINT to prevent Ctrl+C from reaching Security Agent
+        signal(SIGINT, SIG_IGN);
+        
+        // Start Security Agent from ~/.local/bin
         const char* home = getenv("HOME");
         if (home) {
             char security_agent_path[512];
-            snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/security_agent", home);
-            execl(security_agent_path, "security_agent", NULL);
+            snprintf(security_agent_path, sizeof(security_agent_path), "%s/.local/bin/awesh_sec", home);
+            execl(security_agent_path, "awesh_sec", NULL);
         }
         // Fallback to local binary
-        execl("./security_agent", "security_agent", NULL);
+        execl("./awesh_sec", "awesh_sec", NULL);
         perror("Failed to start Security Agent");
         exit(1);
     } else if (security_agent_pid < 0) {
         printf("⚠️ Warning: Could not start Security Agent\n");
     } else {
-        printf("🔒 Security Agent started (PID: %d)\n", security_agent_pid);
+        printf("🔒 Security Agent (awesh_sec) started (PID: %d)\n", security_agent_pid);
         // Don't wait for Security Agent - let it initialize in background
     }
     
@@ -997,6 +1067,7 @@ int main() {
         exit(0);
     } else if (backend_pid > 0) {
         state.backend_pid = backend_pid;
+        printf("🐍 Backend (Python) started (PID: %d)\n", backend_pid);
         // Don't wait for backend - let it initialize in background
     } else {
         printf("⚠️ Warning: Could not start backend\n");

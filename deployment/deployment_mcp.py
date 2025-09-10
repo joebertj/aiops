@@ -147,7 +147,7 @@ def build_project(clean=False):
             log("✅ C components built successfully")
             # Verify all binaries were built
             awesh_binary = AWESH_DIR / "awesh"
-            security_agent_binary = AWESH_DIR / "security_agent"
+            security_agent_binary = AWESH_DIR / "awesh_sec"
             
             if awesh_binary.exists():
                 log("✅ Frontend binary (awesh) built")
@@ -156,9 +156,9 @@ def build_project(clean=False):
                 return False
                 
             if security_agent_binary.exists():
-                log("✅ Security Agent binary (security_agent) built")
+                log("✅ Security Agent binary (awesh_sec) built")
             else:
-                log("❌ Security Agent binary (security_agent) missing")
+                log("❌ Security Agent binary (awesh_sec) missing")
                 return False
         else:
             log(f"❌ C build failed:\n{result.stderr}")
@@ -281,22 +281,22 @@ def deploy_binary(backup=True):
         log(f"✅ Deployed awesh to {INSTALL_PATH}")
         
         # Deploy Security Agent binary
-        security_agent_binary_path = AWESH_DIR / "security_agent"
-        security_agent_install_path = install_dir / "security_agent"
+        security_agent_binary_path = AWESH_DIR / "awesh_sec"
+        security_agent_install_path = install_dir / "awesh_sec"
         
         if not security_agent_binary_path.exists():
-            log("❌ security_agent binary not found. Run build first.")
+            log("❌ awesh_sec binary not found. Run build first.")
             return False
         
         # Backup existing Security Agent if it exists
         if backup and security_agent_install_path.exists():
             backup_path = security_agent_install_path.with_suffix('.bak')
             security_agent_install_path.rename(backup_path)
-            log(f"💾 Backed up existing security_agent to {backup_path}")
+            log(f"💾 Backed up existing awesh_sec to {backup_path}")
         
         shutil.copy2(security_agent_binary_path, security_agent_install_path)
         security_agent_install_path.chmod(0o755)
-        log(f"✅ Deployed security_agent to {security_agent_install_path}")
+        log(f"✅ Deployed awesh_sec to {security_agent_install_path}")
         
         # Verify deployment
         if (INSTALL_PATH.exists() and os.access(INSTALL_PATH, os.X_OK) and
