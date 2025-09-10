@@ -54,16 +54,15 @@ class AweshShell:
         print()
         
         # Show initial prompt immediately
-        try:
-            prompt = self.prompt_manager.get_prompt(False, "")
-        except Exception:
-            prompt = self.prompt_manager.get_simple_prompt(False)
-        print(prompt, flush=True)
+        import sys
+        sys.stdout.write("AI:joebert@maximaal:~/AI/aiops\n>")
+        sys.stdout.flush()
         
         # Simple frontend loop - instant
         while self.running:
             try:
-                line = input()
+                import sys
+                line = sys.stdin.readline().rstrip('\n')
 
                 if not line.strip():
                     continue

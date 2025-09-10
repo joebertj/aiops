@@ -233,7 +233,8 @@ class PromptManager:
         #         pass
         
         # Return two-line prompt: first line with context, second line just >
-        return f"{first_line}\n>"
+        import os
+        return f"{first_line}{os.linesep}>"
     
     def get_enhanced_prompt_with_rag(self, ai_ready: bool = False, user_input: str = "") -> str:
         """
