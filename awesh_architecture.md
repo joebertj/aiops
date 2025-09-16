@@ -6,16 +6,17 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                                awesh System Architecture                        │
 │                          "AI by default, Bash when I mean Bash"                │
+│                             4-Component Architecture                           │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User Input    │    │  C Frontend     │    │ Python Backend  │    │ Security Agent  │
-│                 │    │   (awesh.c)     │    │ (awesh_backend) │    │ (awesh_sec)     │
+│   User Input    │    │  C Frontend     │    │ Security Agent  │    │ Python Backend  │
+│                 │    │   (awesh.c)     │    │ (awesh_sec)     │    │ (awesh_backend) │
 │ • Natural Lang  │───▶│                 │───▶│                 │───▶│                 │
-│ • Shell Commands│    │ • Readline UI   │    │ • AI Processing │    │ • Process Scan  │
-│ • Mixed Input   │    │ • Command Route │    │ • MCP Tools     │    │ • Threat Detect │
-└─────────────────┘    │ • Socket Client │    │ • File Agent    │    │ • Config File   │
-                       │ • PTY Support   │    │ • Socket Server │    │ • RAG Analysis  │
+│ • Shell Commands│    │ • Readline UI   │    │ • Middleware    │    │ • AI Processing │
+│ • Mixed Input   │    │ • Command Route │    │ • Security Gate │    │ • MCP Tools     │
+└─────────────────┘    │ • Socket Client │    │ • RAG Analysis  │    │ • File Agent    │
+                       │ • PTY Support   │    │ • Socket Server │    │ • Socket Server │
                        └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                        │                        │
                                 │                        │                        │
@@ -23,11 +24,11 @@
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │ Bash Sandbox    │    │  Unix Sockets   │    │   AI Provider   │    │  Config Files   │
 │ (awesh_sandbox) │    │                 │    │                 │    │                 │
-│                 │    │ • ~/.awesh.sock │    │ • OpenAI API    │    │ • ~/.aweshrc    │
-│ • PTY Support   │    │ • ~/.awesh_sandbox.sock│ • OpenRouter    │    │ • ~/.awesh_config.ini│
-│ • Command Test  │    │ • Status Sync   │    │ • GPT-4/5       │    │ • Verbose Control│
-│ • Interactive   │    │ • Command Flow  │    │ • Streaming     │    │ • AI Settings   │
-│   Detection     │    │ • Frontend Socket│   │ • Tool Calling  │    │ • Security Rules│
+│                 │    │ • ~/.awesh_sandbox.sock│ • OpenAI API    │    │ • ~/.aweshrc    │
+│ • Bash Validation│    │ • ~/.awesh_security_agent.sock│ • OpenRouter    │    │ • ~/.awesh_config.ini│
+│ • Syntax Check  │    │ • ~/.awesh.sock │    │ • GPT-4/5       │    │ • Verbose Control│
+│ • Return Codes  │    │ • Status Sync   │    │ • Streaming     │    │ • AI Settings   │
+│ • No Execution  │    │ • Command Flow  │    │ • Tool Calling  │    │ • Security Rules│
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -179,21 +180,21 @@ User Input → C Frontend → Command Routing Decision
             Built-in Commands   Sandbox Test    AI Processing
                     │               │               │
                     │               ▼               │
-                    │        Interactive?           │
+                    │        Valid Bash?            │
                     │               │               │
                     │        ┌──────┼──────┐       │
                     │        │      │      │       │
                     │        ▼      ▼      ▼       │
-                    │   Direct PTY  AI    Backend  │
-                    │   Execution   Route  Route   │
+                    │   Direct     AI    Middleware│
+                    │ Execution    Route  Route    │
                     │        │      │      │       │
                     │        │      │      ▼       │
                     │        │      │   Security   │
-                    │        │      │  Middleware  │
+                    │        │      │   Analysis   │
                     │        │      │      │       │
                     │        │      │      ▼       │
-                    │        │      │  Command     │
-                    │        │      │ Execution    │
+                    │        │      │  Backend     │
+                    │        │      │  AI Query    │
                     │        │      │      │       │
                     │        │      │      ▼       │
                     │        │      │  Results     │
@@ -270,11 +271,11 @@ Responses:
 Protocol: ~/.awesh_sandbox.sock (Unix Domain Socket)
 
 Commands:
-├── <command> - Any shell command to test/execute
+├── <command> - Any shell command to validate
 
 Responses:
-├── EXIT_CODE:<code>\nSTDOUT:<output>\nSTDERR:<error> - Normal command
-└── EXIT_CODE:-2\nSTDOUT:INTERACTIVE_COMMAND\nSTDERR:\n - Interactive command
+├── EXIT_CODE:0\nSTDOUT_LEN:Y\nSTDOUT:...\nSTDERR_LEN:Z\nSTDERR:...\n - Valid bash
+└── EXIT_CODE:-2\nSTDOUT_LEN:0\nSTDOUT:\nSTDERR_LEN:0\nSTDERR:\n - Invalid bash (AI query)
 ```
 
 ### 3. Backend ↔ Security Agent
@@ -325,11 +326,11 @@ Default: Operations-focused prompt for infrastructure management
 ## Key Features
 
 ### 1. Smart Command Routing
-- **Sandbox Testing**: All commands tested in sandbox first
-- **Interactive Detection**: Commands that don't return prompt → PTY execution
-- **AI Triggers**: Natural language, questions, analysis requests
-- **Built-in Commands**: cd, pwd, exit, quit (handled by frontend)
-- **Fallback**: Direct bash execution when no children ready
+- **Sandbox Validation**: All commands validated in sandbox first (bash syntax check)
+- **Direct Execution**: Valid bash commands executed directly by frontend
+- **AI Routing**: Invalid bash commands routed to backend via middleware
+- **Built-in Commands**: aweh, awes, awev, awea, awem (handled by frontend)
+- **Synchronous Communication**: Frontend waits for backend responses with 5-minute timeout
 
 ### 2. Security Integration
 - **Real-time Monitoring**: Process scanning every 5 seconds
@@ -370,15 +371,16 @@ awesh
 ### Example Session
 ```bash
 🧠:🔒:🏖️:joebert@maximaal:~:☸️default:🌿main
-> ls -la                              # → Sandbox → Bash execution
-> vi file.txt                         # → Sandbox → Interactive → PTY execution
-> what files are here?                # → AI analysis
-> find . -name "*.py"                 # → Sandbox → Bash execution  
-> top                                 # → Sandbox → Interactive → PTY execution
-> explain this error                  # → AI interpretation
-> cat file.txt | grep error           # → Sandbox → Bash (pipe detected)
-> summarize this directory structure  # → AI analysis
+> ls -la                              # → Sandbox validation → Direct execution
+> vi file.txt                         # → Sandbox validation → Direct execution
+> what files are here?                # → Sandbox validation → AI query via middleware
+> find . -name "*.py"                 # → Sandbox validation → Direct execution  
+> top                                 # → Sandbox validation → Direct execution
+> explain this error                  # → Sandbox validation → AI query via middleware
+> cat file.txt | grep error           # → Sandbox validation → Direct execution
+> summarize this directory structure  # → Sandbox validation → AI query via middleware
 > awev off                            # → Built-in command (verbose off)
+> awem gpt-4                          # → Built-in command (set model)
 > exit                                # → Built-in command (clean exit)
 ```
 

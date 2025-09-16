@@ -65,10 +65,18 @@ MODEL=gpt-5                 # AI model to use
 ### 🎮 Control Commands
 ```bash
 # Inside awesh
-aweh                        # Show help
-awes                        # Show status
-awev 1                      # Enable verbose mode
-awea openai                 # Switch AI provider
+aweh                        # Show help and all available commands
+awes                        # Show verbose status (API provider, model, debug state)
+awea                        # Show current AI provider and model
+awea openai                 # Switch to OpenAI
+awea openrouter             # Switch to OpenRouter
+awem                        # Show current model
+awem gpt-4                  # Set model to GPT-4
+awem gpt-3.5-turbo          # Set model to GPT-3.5 Turbo
+awem claude-3               # Set model to Claude 3
+awev                        # Show verbose level
+awev 0/1/2                  # Set verbose level
+awev on/off                 # Enable/disable verbose
 ```
 
 **That's it!** You now have AI-powered shell assistance with security middleware, intelligent command routing, and full bash compatibility.
@@ -155,13 +163,15 @@ A 23-year terminal veteran is the perfect test user for writing an AI-enhanced t
 
 **💡 Example Usage:**
 ```bash
-awesh> ls -la                              # → Bash execution
-awesh> what files are here?                # → AI analysis
-awesh> find . -name "*.py"                 # → Bash execution  
-awesh> explain this error                  # → AI interpretation
-awesh> cat file.txt | grep error           # → Bash (pipe detected)
-awesh> summarize this directory structure  # → AI analysis
-awesh> why did the build fail?             # → AI interpretation
+awesh> ls -la                              # → Sandbox validation → Direct execution
+awesh> what files are here?                # → Sandbox validation → AI query via middleware
+awesh> find . -name "*.py"                 # → Sandbox validation → Direct execution  
+awesh> explain this error                  # → Sandbox validation → AI query via middleware
+awesh> cat file.txt | grep error           # → Sandbox validation → Direct execution
+awesh> summarize this directory structure  # → Sandbox validation → AI query via middleware
+awesh> why did the build fail?             # → Sandbox validation → AI query via middleware
+awesh> awem gpt-4                          # → Built-in command (set model)
+awesh> awev 1                              # → Built-in command (enable verbose)
 ```
 
 **"AI by default, Bash when I mean Bash."**
@@ -227,6 +237,12 @@ export VERBOSE=1
 aweh            # Show all available awesh control commands
 awes            # Show verbose status (API provider, model, debug state)
 awea            # Show current AI provider and model
+
+# Model Management
+awem            # Show current model
+awem gpt-4      # Set model to GPT-4
+awem gpt-3.5-turbo # Set model to GPT-3.5 Turbo
+awem claude-3   # Set model to Claude 3
 
 # Verbose Debug Control
 awev            # Show verbose level status

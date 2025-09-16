@@ -18,8 +18,11 @@
 #include <ctype.h>
 #include <time.h>
 #include <sys/time.h>
+#include <pty.h>
+#include <termios.h>
 
 static char socket_path[512];
+static char mmap_path[512] = "/tmp/awesh_sandbox_output.mmap";
 
 // Remote prompt data structure
 typedef struct {
@@ -66,6 +69,7 @@ int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
 void send_to_middleware(const char* cmd);
 void send_to_backend_through_middleware(const char* cmd);
+void run_interactive_command(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
@@ -855,7 +859,7 @@ int send_to_sandbox(const char* cmd, char* response, size_t response_size) {
         return -1;
     }
     
-    // Read response with timeout
+    // Read acknowledgment with timeout
     fd_set readfds;
     struct timeval timeout;
     
@@ -867,11 +871,35 @@ int send_to_sandbox(const char* cmd, char* response, size_t response_size) {
     int result = select(client_fd + 1, &readfds, NULL, NULL, &timeout);
     
     if (result > 0) {
-        // Data available, read response
-        ssize_t bytes_received = recv(client_fd, response, response_size - 1, 0);
+        // Read acknowledgment
+        char ack[10];
+        ssize_t bytes_received = recv(client_fd, ack, sizeof(ack) - 1, 0);
         close(client_fd);
+        
         if (bytes_received > 0) {
-            response[bytes_received] = '\0';
+            ack[bytes_received] = '\0';
+            
+            // Now read result from mmap file
+            int mmap_fd = open(mmap_path, O_RDONLY);
+            if (mmap_fd < 0) {
+                return -1;
+            }
+            
+            // Map the file into memory
+            char* mmap_ptr = mmap(NULL, 1024*1024, PROT_READ, MAP_SHARED, mmap_fd, 0);
+            if (mmap_ptr == MAP_FAILED) {
+                close(mmap_fd);
+                return -1;
+            }
+            
+            // Copy JSON response to output buffer
+            strncpy(response, mmap_ptr, response_size - 1);
+            response[response_size - 1] = '\0';
+            
+            // Cleanup
+            munmap(mmap_ptr, 1024*1024);
+            close(mmap_fd);
+            
             return 0;  // Success
         }
     }
@@ -1492,7 +1520,8 @@ int is_awesh_command(const char* cmd) {
     return (strcmp(cmd, "aweh") == 0 ||
             strcmp(cmd, "awes") == 0 ||
             strncmp(cmd, "awev", 4) == 0 ||
-            strncmp(cmd, "awea", 4) == 0);
+            strncmp(cmd, "awea", 4) == 0 ||
+            strncmp(cmd, "awem", 4) == 0);
 }
 
 
@@ -1513,6 +1542,11 @@ void handle_awesh_command(const char* cmd) {
         printf("  awea              Show current AI provider and model\n");
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
+        printf("\n📋 Model:\n");
+        printf("  awem              Show current model\n");
+        printf("  awem gpt-4        Set model to GPT-4\n");
+        printf("  awem gpt-3.5-turbo Set model to GPT-3.5 Turbo\n");
+        printf("  awem claude-3     Set model to Claude 3\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
@@ -1608,6 +1642,45 @@ void handle_awesh_command(const char* cmd) {
             printf("🤖 Switching to OpenRouter... (restart awesh to take effect)\n");
         } else {
             printf("Usage: awea [openai|openrouter]\n");
+        }
+    } else if (strncmp(cmd, "awem", 4) == 0) {
+        // Parse awem command and arguments
+        if (strcmp(cmd, "awem") == 0) {
+            // Just "awem" - show current model
+            const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+            const char* model = NULL;
+            
+            if (strcmp(ai_provider, "openrouter") == 0) {
+                model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
+            } else {
+                model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
+            }
+            
+            printf("📋 Current Model: %s\n", model);
+        } else {
+            // Extract model name from command
+            char* model_name = strchr(cmd, ' ');
+            if (model_name) {
+                model_name++; // Skip the space
+                
+                const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+                
+                // Update model in config and environment based on provider
+                if (strcmp(ai_provider, "openrouter") == 0) {
+                    update_config_file("OPENROUTER_MODEL", model_name);
+                    setenv("OPENROUTER_MODEL", model_name, 1);
+                    send_command("OPENROUTER_MODEL:");
+                } else {
+                    update_config_file("OPENAI_MODEL", model_name);
+                    setenv("OPENAI_MODEL", model_name, 1);
+                    send_command("OPENAI_MODEL:");
+                }
+                send_command(model_name);
+                
+                printf("📋 Model set to: %s (restart awesh to take effect)\n", model_name);
+            } else {
+                printf("❌ Please specify a model. Example: 'awem gpt-4'\n");
+            }
         }
     }
 }
@@ -1892,8 +1965,8 @@ int test_command_in_sandbox(const char* cmd) {
     // Use the new socket-based sandbox communication
     char response[4096];
     int result = send_to_sandbox(cmd, response, sizeof(response));
-    
-    if (result == 0) {
+        
+        if (result == 0) {
         // Check if sandbox detected an interactive command
         if (strstr(response, "INTERACTIVE_COMMAND")) {
             if (state.verbose >= 2) {
@@ -1902,10 +1975,9 @@ int test_command_in_sandbox(const char* cmd) {
             return -2;  // Special return code for interactive commands
         }
         
-        // Parse sandbox response format: EXIT_CODE:X\nSTDOUT:...\nSTDERR:...\n
+        // Parse validation result from sandbox: EXIT_CODE:X\nSTDOUT_LEN:Y\nSTDOUT:...\nSTDERR_LEN:Z\nSTDERR:...\n
         int exit_code = 0;
-        char* stdout_start = NULL;
-        char* stderr_start = NULL;
+        char stderr_content[4096] = {0};
         
         // Parse EXIT_CODE
         char* exit_line = strstr(response, "EXIT_CODE:");
@@ -1913,63 +1985,123 @@ int test_command_in_sandbox(const char* cmd) {
             exit_code = atoi(exit_line + 10);
         }
         
-        // Parse STDOUT
-        char* stdout_line = strstr(response, "STDOUT:");
-        if (stdout_line) {
-            stdout_start = stdout_line + 7;  // Skip "STDOUT:"
-        }
-        
-        // Parse STDERR
-        char* stderr_line = strstr(response, "STDERR:");
-        if (stderr_line) {
-            stderr_start = stderr_line + 7;  // Skip "STDERR:"
-        }
-        
-        // Extract stdout content (until STDERR or end)
-        char stdout_content[4096] = {0};
-        if (stdout_start) {
-            char* stdout_end = stderr_line ? stderr_line : (response + strlen(response));
-            size_t stdout_len = stdout_end - stdout_start;
-            if (stdout_len > 0 && stdout_len < sizeof(stdout_content)) {
-                strncpy(stdout_content, stdout_start, stdout_len);
-                stdout_content[stdout_len] = '\0';
-            }
-        }
-        
-        // Extract stderr content
-        char stderr_content[4096] = {0};
-        if (stderr_start) {
-            size_t stderr_len = strlen(stderr_start);
-            if (stderr_len > 0 && stderr_len < sizeof(stderr_content)) {
-                strncpy(stderr_content, stderr_start, stderr_len);
+        // Parse STDERR_LEN and STDERR (we only care about stderr for validation)
+        char* stderr_len_line = strstr(response, "STDERR_LEN:");
+        if (stderr_len_line) {
+            size_t stderr_len = atoi(stderr_len_line + 11);
+            char* stderr_start = strstr(stderr_len_line, "STDERR:");
+            if (stderr_start && stderr_len > 0 && stderr_len < sizeof(stderr_content)) {
+                strncpy(stderr_content, stderr_start + 7, stderr_len);
                 stderr_content[stderr_len] = '\0';
             }
         }
         
-        // Show verbose output only if verbose level is high enough
+        // Show debug info only in verbose mode
         if (state.verbose >= 2) {
-            printf("EXIT_CODE:%d\nSTDOUT:%sSTDERR:%s", exit_code, stdout_content, stderr_content);
-        } else {
-            // Show only the actual command output
-            if (strlen(stdout_content) > 0) {
-                printf("%s", stdout_content);
-            }
-            if (strlen(stderr_content) > 0 && state.verbose >= 1) {
-                printf("%s", stderr_content);
-            }
+            printf("DEBUG: Sandbox validation - exit_code: %d, stderr: '%s'\n", exit_code, stderr_content);
         }
         
-        // Store output in bash_sandbox.output_buffer for compatibility
-        strncpy(bash_sandbox.output_buffer, stdout_content, sizeof(bash_sandbox.output_buffer) - 1);
-        bash_sandbox.output_buffer[sizeof(bash_sandbox.output_buffer) - 1] = '\0';
-        bash_sandbox.output_length = strlen(stdout_content);
+        // Return validation result:
+        // 0 = VALID BASH (frontend executes directly)
+        // -2 = INVALID BASH (route to backend for AI help)
         
-        return (exit_code == 0) ? 0 : -1;  // Success if exit code is 0
+        // Check if command executed successfully in sandbox (valid bash)
+        if (exit_code == 0 && strlen(stderr_content) == 0) {
+            if (state.verbose >= 2) {
+                printf("✅ Sandbox: Valid bash command - executing directly\n");
+            }
+            return 0;  // VALID BASH - Frontend executes directly
+        } else {
+            // Command failed in sandbox - invalid bash or needs AI help
+            if (state.verbose >= 2) {
+                printf("🤖 Sandbox: Invalid bash or needs AI help - routing to backend\n");
+            }
+            return -2;  // INVALID BASH - Route to backend for AI help
+        }
     } else {
         if (state.verbose >= 2) {
             printf("❌ Sandbox command failed\n");
         }
         return -1;  // Command failed
+    }
+}
+
+void send_to_backend_through_middleware_and_wait(const char* cmd) {
+    // Send to backend through middleware and wait for response with thinking dots
+    if (state.socket_fd >= 0) {
+        // Send command to backend
+        if (send(state.socket_fd, cmd, strlen(cmd), 0) < 0) {
+            printf("\n❌ Failed to send command to backend\n");
+            return;
+        }
+        
+        // Show thinking dots while waiting for response (5 minute timeout)
+        int dots = 0;
+        time_t start_time = time(NULL);
+        const int MAX_WAIT_SECONDS = 300;  // 5 minutes
+        
+        while (1) {
+            // Check if data is available to read
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(state.socket_fd, &readfds);
+            
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100000;  // 100ms
+            
+            int result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
+            
+            if (result > 0) {
+                // Data available - read response
+                char response[MAX_RESPONSE_LEN];
+                ssize_t bytes_received = recv(state.socket_fd, response, sizeof(response) - 1, 0);
+                if (bytes_received > 0) {
+                    response[bytes_received] = '\0';
+                    
+                    // Clear thinking dots and show response
+                    printf("\r                    \r");  // Clear line
+                    
+                    // Parse response from middleware
+                    if (strncmp(response, "BACKEND_RESPONSE:", 17) == 0) {
+                        // Backend response approved by middleware
+                        char* backend_output = response + 17;
+                        printf("%s", backend_output);
+                    } else if (strncmp(response, "BACKEND_BLOCKED:", 16) == 0) {
+                        // Middleware blocked backend response
+                        char* reason = response + 16;
+                        printf("🚫 Backend response blocked: %s\n", reason);
+                    } else {
+                        // Unknown response - show as-is
+                        printf("%s", response);
+                    }
+                    break;
+                } else {
+                    printf("\n❌ Backend connection lost\n");
+                    break;
+                }
+            } else if (result == 0) {
+                // Timeout - check if we've exceeded 5 minutes
+                time_t current_time = time(NULL);
+                if (current_time - start_time >= MAX_WAIT_SECONDS) {
+                    printf("\n⏰ Backend response timeout (5 minutes)\n");
+                    break;
+                }
+                
+                // Show thinking dots
+                printf(".");
+                fflush(stdout);
+                dots++;
+                if (dots > 50) {  // Reset dots counter every 5 seconds
+                    dots = 0;
+                }
+            } else {
+                printf("\n❌ Error waiting for backend response\n");
+                break;
+            }
+        }
+    } else {
+        printf("\n❌ No backend connection\n");
     }
 }
 
@@ -2003,6 +2135,44 @@ void send_to_backend_through_middleware(const char* cmd) {
     } else {
         // No middleware connection
         printf("🚫 No middleware connection - backend request blocked\n");
+    }
+}
+
+void send_to_middleware_and_wait(const char* cmd) {
+    // Send to middleware and wait for response with thinking dots
+    if (security_agent_socket_fd >= 0) {
+        // Send command to security middleware for validation
+        char security_request[MAX_CMD_LEN + 50];
+        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
+        
+        // Send to security middleware
+        char response[MAX_RESPONSE_LEN];
+        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
+            // Parse response from middleware
+            if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
+                // Middleware approved - pass to backend
+                char* approved_cmd = response + 14;
+                    if (state.ai_status == AI_READY) {
+                    // Send to backend through middleware and wait for response
+                    send_to_backend_through_middleware_and_wait(approved_cmd);
+                } else {
+                    printf("\n🤖⏳ AI not ready. Please try again in a moment.\n");
+                }
+            } else if (strncmp(response, "SECURITY_FAIL:", 14) == 0) {
+                // Middleware blocked the command
+                char* reason = response + 14;
+                printf("\n🚫 Command blocked: %s\n", reason);
+            } else {
+                // Unknown response - show as-is
+                printf("\n%s", response);
+            }
+        } else {
+            // Middleware communication failed
+            printf("\n🚫 Middleware unavailable - backend request failed\n");
+        }
+    } else {
+        // No middleware connection
+        printf("\n🚫 No middleware connection - backend request blocked\n");
     }
 }
 
@@ -2269,35 +2439,57 @@ void execute_command_securely(const char* cmd) {
     }
     
     // 2b - sandbox: send to sandbox, get result, decide routing
+    if (state.verbose >= 2) {
+        printf("DEBUG: Sandbox status - PID: %d, Running: %s\n", 
+               state.sandbox_pid, 
+               (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) ? "YES" : "NO");
+    }
     int sandbox_result = test_command_in_sandbox(cmd);
     
     if (sandbox_result == 0) {
-        // Command succeeded with output - display to user and return prompt
-        printf("%s", bash_sandbox.output_buffer);
-        return;
-    } else if (sandbox_result == 1) {
-        // Command succeeded with no output - just return prompt
-        return;
-    } else {
-        // 2c - prompt or backend: command failed in sandbox, route to backend
-        if (backend_ready && middleware_ready) {
-            send_to_middleware(cmd);
+        // SAFE - Sandbox validation passed - execute command directly in frontend
+        if (state.verbose >= 2) {
+            printf("✅ Sandbox validation passed - executing command directly\n");
+        }
+        if (is_interactive_command(cmd)) {
+            if (state.verbose >= 1) {
+                printf("🖥️ Interactive command - running directly with TTY\n");
+            }
+            // Run interactive command with proper TTY for password prompts
+            run_interactive_command(cmd);
         } else {
-            // Backend or middleware not ready - run command directly as fallback
-            if (is_interactive_command(cmd)) {
-                if (state.verbose >= 1) {
-                    printf("🖥️ Interactive command - running directly with TTY\n");
+            // Run non-interactive command with popen to capture output
+            FILE* cmd_pipe = popen(cmd, "r");
+            if (cmd_pipe) {
+                char buffer[1024];
+                while (fgets(buffer, sizeof(buffer), cmd_pipe)) {
+                    printf("%s", buffer);
+                }
+                int exit_code = pclose(cmd_pipe);
+                if (exit_code != 0 && state.verbose >= 1) {
+                    printf("Command failed (exit %d)\n", exit_code);
                 }
             } else {
-                if (state.verbose >= 1) {
-                    printf("⚠️ Backend/middleware not ready - running command directly\n");
-                }
-            }
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-                printf("Command failed (exit %d)\n", result);
+                printf("Failed to execute command\n");
             }
         }
+        return;
+    } else {
+        // Sandbox validation failed - route to backend for AI help
+        if (state.verbose >= 2) {
+            printf("🤖 Sandbox validation failed - routing to backend for AI help\n");
+        }
+        if (backend_ready && middleware_ready) {
+            // Show thinking dots while processing
+            printf("🤔 Thinking");
+            fflush(stdout);
+            
+            // Send to middleware and wait for response
+            send_to_middleware_and_wait(cmd);
+        } else {
+            printf("🚫 Backend/middleware not available for AI help\n");
+        }
+        return;
     }
 }
 
@@ -2683,4 +2875,112 @@ int main() {
     cleanup_and_exit(0);
     return 0;
 }
+
+void run_interactive_command(const char* cmd) {
+    // Create a PTY for proper TTY support (needed for SSH password prompts)
+    int master_fd, slave_fd;
+    char slave_name[256];
+    
+    if (openpty(&master_fd, &slave_fd, slave_name, NULL, NULL) < 0) {
+        perror("Failed to create PTY for interactive command");
+        // Fallback to system() if PTY creation fails
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command failed (exit %d)\n", result);
+        }
+        return;
+    }
+    
+    // Fork to run the interactive command
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process: use PTY slave as stdio
+        close(master_fd);  // Close master in child
+        
+        // Redirect stdin, stdout, stderr to PTY slave
+        dup2(slave_fd, STDIN_FILENO);
+        dup2(slave_fd, STDOUT_FILENO);
+        dup2(slave_fd, STDERR_FILENO);
+        
+        // Close slave fd (now duplicated)
+        close(slave_fd);
+        
+        // Set TERM environment variable for proper terminal support
+        setenv("TERM", "xterm-256color", 1);
+        
+        // Execute the command
+        execl("/bin/bash", "bash", "-c", cmd, NULL);
+        exit(1); // Should not reach here
+    } else if (pid > 0) {
+        // Parent process: close slave fd, keep master
+        close(slave_fd);
+        
+        // Set up terminal for raw input (needed for password prompts)
+        struct termios termios_old, termios_new;
+        tcgetattr(STDIN_FILENO, &termios_old);
+        termios_new = termios_old;
+        termios_new.c_lflag &= ~(ECHO | ICANON);
+        tcsetattr(STDIN_FILENO, TCSANOW, &termios_new);
+        
+        // Relay data between stdin and master PTY
+        fd_set readfds;
+        char buffer[1024];
+        int max_fd = (master_fd > STDIN_FILENO) ? master_fd : STDIN_FILENO;
+        
+        while (1) {
+            FD_ZERO(&readfds);
+            FD_SET(STDIN_FILENO, &readfds);
+            FD_SET(master_fd, &readfds);
+            
+            int result = select(max_fd + 1, &readfds, NULL, NULL, NULL);
+            if (result > 0) {
+                if (FD_ISSET(STDIN_FILENO, &readfds)) {
+                    // Data from stdin -> send to command
+                    ssize_t bytes_read = read(STDIN_FILENO, buffer, sizeof(buffer));
+                    if (bytes_read > 0) {
+                        write(master_fd, buffer, bytes_read);
+                    } else if (bytes_read == 0) {
+                        // EOF from stdin
+                        break;
+                    }
+                }
+                if (FD_ISSET(master_fd, &readfds)) {
+                    // Data from command -> send to stdout
+                    ssize_t bytes_read = read(master_fd, buffer, sizeof(buffer));
+                    if (bytes_read > 0) {
+                        write(STDOUT_FILENO, buffer, bytes_read);
+                    } else if (bytes_read == 0) {
+                        // EOF from command
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Restore terminal settings
+        tcsetattr(STDIN_FILENO, TCSANOW, &termios_old);
+        
+        // Close master fd
+        close(master_fd);
+        
+        // Wait for child process to complete
+        int status;
+        waitpid(pid, &status, 0);
+        
+        if (WEXITSTATUS(status) != 0 && state.verbose >= 1) {
+            printf("Command failed (exit %d)\n", WEXITSTATUS(status));
+        }
+    } else {
+        // Fork failed
+        close(master_fd);
+        close(slave_fd);
+        perror("Failed to fork for interactive command");
+        // Fallback to system()
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command failed (exit %d)\n", result);
+        }
+    }
+}
+
 
