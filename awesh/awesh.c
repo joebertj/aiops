@@ -36,11 +36,11 @@ int send_to_backend(const char* query, char* response, size_t response_size);
 int send_to_security_agent(const char* query, char* response, size_t response_size);
 void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
-int is_simple_command(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
 int test_command_in_sandbox(const char* cmd);
 void send_to_middleware(const char* cmd);
+void send_to_backend_through_middleware(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
@@ -1077,12 +1077,6 @@ int is_awesh_command(const char* cmd) {
             strncmp(cmd, "awea", 4) == 0);
 }
 
-int is_builtin(const char* cmd) {
-    return (strncmp(cmd, "cd ", 3) == 0 || 
-            strcmp(cmd, "cd") == 0 ||
-            strcmp(cmd, "pwd") == 0 || 
-            strcmp(cmd, "exit") == 0);
-}
 
 void handle_awesh_command(const char* cmd) {
     if (strcmp(cmd, "aweh") == 0) {
@@ -1349,40 +1343,6 @@ void handle_interactive_bash(const char* cmd) {
     }
 }
 
-int is_simple_command(const char* cmd) {
-    if (!cmd || strlen(cmd) == 0) return 0;
-    
-    if (state.verbose >= 2) {
-        printf("🔍 Checking if simple command: '%s'\n", cmd);
-    }
-    
-    // Simple commands that don't need complex error handling
-    const char* simple_commands[] = {
-        "ls", "pwd", "whoami", "date", "uptime", "free", "df", "ps", "top", "htop",
-        "cat", "head", "tail", "grep", "find", "which", "whereis", "locate",
-        "mkdir", "rmdir", "touch", "chmod", "chown", "stat", "file",
-        "env", "printenv", "history", "alias", "type", "help"
-    };
-    
-    // Check if command starts with a simple command
-    for (size_t i = 0; i < sizeof(simple_commands) / sizeof(simple_commands[0]); i++) {
-        size_t cmd_len = strlen(simple_commands[i]);
-        if (strncmp(cmd, simple_commands[i], cmd_len) == 0) {
-            // Check if it's exactly the command or followed by space/argument
-            if (cmd[cmd_len] == '\0' || cmd[cmd_len] == ' ' || cmd[cmd_len] == '\t') {
-                if (state.verbose >= 2) {
-                    printf("✅ Found simple command: %s\n", simple_commands[i]);
-                }
-                return 1;
-            }
-        }
-    }
-    
-    if (state.verbose >= 2) {
-        printf("❌ Not a simple command\n");
-    }
-    return 0;
-}
 
 int spawn_bash_sandbox(void) {
     // Create pipes for communication with bash sandbox
@@ -1559,16 +1519,45 @@ int test_command_in_sandbox(const char* cmd) {
     }
 }
 
+void send_to_backend_through_middleware(const char* cmd) {
+    // Middleware intercepts backend communication
+    if (security_agent_socket_fd >= 0) {
+        // Send command to middleware for backend processing
+        char middleware_request[MAX_CMD_LEN + 50];
+        snprintf(middleware_request, sizeof(middleware_request), "BACKEND_REQUEST:%s", cmd);
+        
+        // Send to middleware (middleware will forward to backend and intercept response)
+        char response[MAX_RESPONSE_LEN];
+        if (send_to_security_agent(middleware_request, response, sizeof(response)) == 0) {
+            // Parse response from middleware (already filtered by middleware)
+            if (strncmp(response, "BACKEND_RESPONSE:", 17) == 0) {
+                // Middleware approved backend response
+                char* backend_response = response + 17;
+                printf("%s", backend_response);
+            } else if (strncmp(response, "BACKEND_BLOCKED:", 16) == 0) {
+                // Middleware blocked backend response
+                char* reason = response + 16;
+                printf("🚫 Backend response blocked: %s\n", reason);
+            } else {
+                // Unknown response - show as-is
+                printf("%s", response);
+            }
+        } else {
+            // Middleware communication failed
+            printf("🚫 Middleware unavailable - backend request failed\n");
+        }
+    } else {
+        // No middleware connection
+        printf("🚫 No middleware connection - backend request blocked\n");
+    }
+}
+
 void send_to_middleware(const char* cmd) {
     // Middleware: Intercept commands between frontend and backend
     if (security_agent_socket_fd >= 0) {
         // Send command to security middleware for validation
         char security_request[MAX_CMD_LEN + 50];
         snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
-        
-        if (state.verbose >= 2) {
-            printf("🔒 Middleware: validating command: %s\n", cmd);
-        }
         
         // Send to security middleware
         char response[MAX_RESPONSE_LEN];
@@ -1577,11 +1566,9 @@ void send_to_middleware(const char* cmd) {
             if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
                 // Middleware approved - pass to backend
                 char* approved_cmd = response + 14;
-                if (state.verbose >= 2) {
-                    printf("✅ Middleware: command approved, passing to backend...\n");
-                }
                 if (state.ai_status == AI_READY) {
-                    handle_ai_mode_detection(approved_cmd);
+                    // Send to backend through middleware (middleware intercepts response)
+                    send_to_backend_through_middleware(approved_cmd);
                 } else {
                     printf("🤖⏳ AI not ready. Please try again in a moment.\n");
                 }
@@ -1594,67 +1581,28 @@ void send_to_middleware(const char* cmd) {
                 printf("%s", response);
             }
         } else {
-            // Middleware communication failed - fallback to direct backend
-            if (state.verbose >= 1) {
-                printf("⚠️ Middleware unavailable, sending directly to backend...\n");
-            }
-            if (state.ai_status == AI_READY) {
-                handle_ai_mode_detection(cmd);
-            } else {
-                printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-            }
+            // Middleware communication failed - no fallback to backend
+            printf("🚫 Middleware unavailable - command blocked for security\n");
         }
     } else {
-        // No middleware connection - send directly to backend
-        if (state.verbose >= 1) {
-            printf("⚠️ No middleware connection, sending directly to backend...\n");
-        }
-        if (state.ai_status == AI_READY) {
-            handle_ai_mode_detection(cmd);
-        } else {
-            printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-        }
+        // No middleware connection - no fallback to backend
+        printf("🚫 No middleware connection - command blocked for security\n");
     }
 }
 
 void execute_command_securely(const char* cmd) {
-    // For simple commands, use direct execution (no sandbox, no thinking dots)
-    if (is_simple_command(cmd)) {
-        if (state.verbose >= 2) {
-            printf("🚀 Direct execution: %s\n", cmd);
-        }
-        // Direct execution for simple commands - fastest approach, no thinking dots
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command exited with code: %d\n", result);
-        }
-        return;
-    }
-    
-    // For complex commands, run through bash sandbox first
-    if (state.verbose >= 2) {
-        printf("🏖️ Testing command in sandbox: %s\n", cmd);
-    }
+    // 2b - sandbox: send to sandbox, get result, decide routing
     int sandbox_result = test_command_in_sandbox(cmd);
     
     if (sandbox_result == 0) {
         // Command succeeded with output - display to user and return prompt
-        if (state.verbose >= 2) {
-            printf("✅ Sandbox success with output\n");
-        }
         printf("%s", bash_sandbox.output_buffer);
         return;
     } else if (sandbox_result == 1) {
         // Command succeeded with no output - just return prompt
-        if (state.verbose >= 2) {
-            printf("✅ Sandbox success with no output\n");
-        }
         return;
     } else {
-        // Command failed (return value ≠ 0 OR stderr not empty) - send to middleware
-        if (state.verbose >= 1) {
-            printf("🔧 Command failed in sandbox, sending to middleware...\n");
-        }
+        // 2c - prompt or backend: command failed in sandbox, route to backend
         send_to_middleware(cmd);
     }
 }
@@ -1711,31 +1659,6 @@ void handle_bash_with_ai_fallback(const char* cmd) {
     }
 }
 
-void handle_builtin(const char* cmd) {
-    if (strcmp(cmd, "exit") == 0) {
-        cleanup_and_exit(0);
-    } else if (strcmp(cmd, "pwd") == 0) {
-        char cwd[1024];
-        if (getcwd(cwd, sizeof(cwd))) {
-            printf("%s\n", cwd);
-        }
-    } else if (strncmp(cmd, "cd ", 3) == 0 || strcmp(cmd, "cd") == 0) {
-        // Handle cd command in frontend and sync with backend
-        const char* path;
-        if (strcmp(cmd, "cd") == 0) {
-            path = getenv("HOME");  // cd with no args goes to home
-        } else {
-            path = cmd + 3;  // cd with path
-        }
-        
-        if (chdir(path) == 0) {
-            // Success - directory changed instantly
-            // Backend will sync on next command that needs it
-        } else {
-            perror("cd");
-        }
-    }
-}
 
 int main() {
     // Setup signal handlers
@@ -1760,6 +1683,8 @@ int main() {
     // Spawn bash sandbox for instant command testing
     if (spawn_bash_sandbox() != 0) {
         printf("⚠️ Warning: Could not spawn bash sandbox\n");
+    } else {
+        printf("DEBUG: Bash sandbox initialized successfully\n");
     }
     
     // Start Security Agent as separate process (non-blocking)
@@ -1965,23 +1890,12 @@ int main() {
         // AI-driven mode detection: Let AI decide command vs edit mode
         // No longer need to parse AI mode - all commands go through sandbox
         
-        // Handle command - priority order: aweX commands, then direct bash commands, then AI
+        // Handle command - clean logic: aweX → sandbox → backend
         if (is_awesh_command(line)) {
-            if (state.verbose >= 2) {
-                printf("🎛️ AweX command: %s\n", line);
-            }
+            // 2a - aweX commands
             handle_awesh_command(line);
-        } else if (is_builtin(line)) {
-            if (state.verbose >= 2) {
-                printf("🔧 Builtin command: %s\n", line);
-            }
-            // Built-in commands (cd, pwd, exit) - highest priority after aweX
-            handle_builtin(line);
         } else {
-            if (state.verbose >= 2) {
-                printf("🚀 Regular command: %s\n", line);
-            }
-            // ALL commands go through bash sandbox first - no command identification
+            // 2b - sandbox: send to sandbox, get result, decide routing
             execute_command_securely(line);
         }
         

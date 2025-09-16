@@ -4,17 +4,22 @@ LIBS = -lreadline
 
 TARGET = awesh
 SECURITY_AGENT = awesh_sec
+SANDBOX = awesh_sandbox
 SOURCE = awesh.c
 SECURITY_AGENT_SOURCE = security_agent.c
+SANDBOX_SOURCE = awesh_sandbox.c
 BACKEND_PKG = ../awesh_backend
 
-all: $(TARGET) $(SECURITY_AGENT) backend
+all: $(TARGET) $(SECURITY_AGENT) $(SANDBOX) backend
 
 $(TARGET): $(SOURCE)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE) $(LIBS)
 
 $(SECURITY_AGENT): $(SECURITY_AGENT_SOURCE)
 	$(CC) $(CFLAGS) -o $(SECURITY_AGENT) $(SECURITY_AGENT_SOURCE)
+
+$(SANDBOX): $(SANDBOX_SOURCE)
+	$(CC) $(CFLAGS) -o $(SANDBOX) $(SANDBOX_SOURCE)
 
 backend:
 	@echo "Backend package ready at $(BACKEND_PKG)"
