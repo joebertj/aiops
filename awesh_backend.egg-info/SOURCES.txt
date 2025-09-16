@@ -6,6 +6,7 @@ agents/agent_processor.py
 agents/base_agent.py
 agents/command_router_agent.py
 agents/container_agent.py
+agents/git_agent.py
 agents/kubernetes_agent.py
 agents/response_parser.py
 awesh/__init__.py
@@ -21,6 +22,7 @@ awesh_backend.egg-info/dependency_links.txt
 awesh_backend.egg-info/entry_points.txt
 awesh_backend.egg-info/requires.txt
 awesh_backend.egg-info/top_level.txt
+awesh_backend/agents/__init__.py
 credential_store/__init__.py
 deployment/__init__.py
 deployment/deployment_mcp.py

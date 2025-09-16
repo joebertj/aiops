@@ -140,7 +140,7 @@ def build_project(clean=False):
                 log(f"❌ Clean failed: {result.stderr}")
                 return False
         
-        log("🔨 Building C components (frontend + Security Agent)...")
+        log("🔨 Building C components (frontend + Security Agent + Sandbox)...")
         result = subprocess.run(["make"], capture_output=True, text=True, cwd=AWESH_DIR)
         
         if result.returncode == 0:
@@ -148,6 +148,7 @@ def build_project(clean=False):
             # Verify all binaries were built
             awesh_binary = AWESH_DIR / "awesh"
             security_agent_binary = AWESH_DIR / "awesh_sec"
+            sandbox_binary = AWESH_DIR / "awesh_sandbox"
             
             if awesh_binary.exists():
                 log("✅ Frontend binary (awesh) built")
@@ -159,6 +160,12 @@ def build_project(clean=False):
                 log("✅ Security Agent binary (awesh_sec) built")
             else:
                 log("❌ Security Agent binary (awesh_sec) missing")
+                return False
+                
+            if sandbox_binary.exists():
+                log("✅ Sandbox binary (awesh_sandbox) built")
+            else:
+                log("❌ Sandbox binary (awesh_sandbox) missing")
                 return False
         else:
             log(f"❌ C build failed:\n{result.stderr}")
@@ -190,7 +197,7 @@ def kill_processes(force=False):
         # Find and kill awesh processes by name
         for proc in psutil.process_iter(['pid', 'name']):
             try:
-                if proc.info['name'] in ['awesh', 'awesh_backend', 'awesh_sec']:
+                if proc.info['name'] in ['awesh', 'awesh_backend', 'awesh_sec', 'awesh_sandbox']:
                     pid = proc.info['pid']
                     name = proc.info['name']
                     
@@ -263,7 +270,8 @@ def kill_processes(force=False):
         socket_paths = [
             Path.home() / ".awesh.sock",
             Path.home() / ".awesh_security_agent.sock",
-            Path("/tmp/awesh.sock")
+            Path("/tmp/awesh.sock"),
+            Path("/tmp/awesh_sandbox.sock")
         ]
         
         for socket_path in socket_paths:
@@ -323,9 +331,28 @@ def deploy_binary(backup=True):
         security_agent_install_path.chmod(0o755)
         log(f"✅ Deployed awesh_sec to {security_agent_install_path}")
         
+        # Deploy Sandbox binary
+        sandbox_binary_path = AWESH_DIR / "awesh_sandbox"
+        sandbox_install_path = install_dir / "awesh_sandbox"
+        
+        if not sandbox_binary_path.exists():
+            log("❌ awesh_sandbox binary not found. Run build first.")
+            return False
+        
+        # Backup existing Sandbox if it exists
+        if backup and sandbox_install_path.exists():
+            backup_path = sandbox_install_path.with_suffix('.bak')
+            sandbox_install_path.rename(backup_path)
+            log(f"💾 Backed up existing awesh_sandbox to {backup_path}")
+        
+        shutil.copy2(sandbox_binary_path, sandbox_install_path)
+        sandbox_install_path.chmod(0o755)
+        log(f"✅ Deployed awesh_sandbox to {sandbox_install_path}")
+        
         # Verify deployment
         if (INSTALL_PATH.exists() and os.access(INSTALL_PATH, os.X_OK) and
-            security_agent_install_path.exists() and os.access(security_agent_install_path, os.X_OK)):
+            security_agent_install_path.exists() and os.access(security_agent_install_path, os.X_OK) and
+            sandbox_install_path.exists() and os.access(sandbox_install_path, os.X_OK)):
             log("✅ All binaries are executable and ready")
             return True
         else:

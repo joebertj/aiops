@@ -1,3 +1,2 @@
 [console_scripts]
 awesh_backend = awesh_backend.__main__:main
-
