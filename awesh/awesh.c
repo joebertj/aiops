@@ -56,7 +56,7 @@ void debug_perf(const char* operation, long start_time);
 void check_child_process_health(void);
 int is_process_running(pid_t pid);
 void log_health_status(const char* process_name, pid_t pid, int is_running);
-void get_health_status_emojis(char* backend_emoji, char* security_emoji);
+void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* sandbox_emoji);
 int restart_backend(void);
 int restart_security_agent(void);
 int restart_sandbox(void);
@@ -338,7 +338,7 @@ void check_child_process_health(void) {
     }
 }
 
-void get_health_status_emojis(char* backend_emoji, char* security_emoji) {
+void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* sandbox_emoji) {
     // Backend health emoji - unique emojis for each state
     if (state.backend_pid > 0 && is_process_running(state.backend_pid)) {
         switch (state.ai_status) {
@@ -367,6 +367,19 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji) {
         }
     } else {
         strcpy(security_emoji, "⛔");  // Not started (different from both)
+    }
+    
+    // Sandbox health emoji
+    if (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) {
+        // Test if sandbox is responding by sending a test command
+        char test_response[64];
+        if (send_to_sandbox("echo test", test_response, sizeof(test_response)) == 0) {
+            strcpy(sandbox_emoji, "🏖️");  // Running and responding
+        } else {
+            strcpy(sandbox_emoji, "⚠️");  // Not responding
+        }
+    } else {
+        strcpy(sandbox_emoji, "⛔");  // Not started
     }
 }
 
@@ -1988,15 +2001,36 @@ void send_to_middleware(const char* cmd) {
             }
         } else {
             // Middleware communication failed - block backend-bound commands
-            printf("🚫 Middleware unavailable - backend request blocked for security\n");
+            if (state.verbose >= 1) {
+                printf("🚫 Middleware unavailable - backend request blocked for security\n");
+            }
         }
     } else {
         // No middleware connection - block backend-bound commands
-        printf("🚫 No middleware connection - backend request blocked for security\n");
+        if (state.verbose >= 1) {
+            printf("🚫 No middleware connection - backend request blocked for security\n");
+        }
     }
 }
 
 void execute_command_securely(const char* cmd) {
+    // Check if any children are ready
+    int backend_ready = (state.backend_pid > 0 && is_process_running(state.backend_pid) && state.ai_status == AI_READY);
+    int sandbox_ready = (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid));
+    int middleware_ready = (security_agent_socket_fd >= 0);
+    
+    if (!backend_ready && !sandbox_ready && !middleware_ready) {
+        // No children ready - run command directly as bash fallback
+        if (state.verbose >= 1) {
+            printf("⚠️ No children ready - running command directly\n");
+        }
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command failed (exit %d)\n", result);
+        }
+        return;
+    }
+    
     // 2b - sandbox: send to sandbox, get result, decide routing
     int sandbox_result = test_command_in_sandbox(cmd);
     
@@ -2009,7 +2043,18 @@ void execute_command_securely(const char* cmd) {
         return;
     } else {
         // 2c - prompt or backend: command failed in sandbox, route to backend
-        send_to_middleware(cmd);
+        if (backend_ready && middleware_ready) {
+            send_to_middleware(cmd);
+        } else {
+            // Backend or middleware not ready - run command directly as fallback
+            if (state.verbose >= 1) {
+                printf("⚠️ Backend/middleware not ready - running command directly\n");
+            }
+            int result = system(cmd);
+            if (result != 0 && state.verbose >= 1) {
+                printf("Command failed (exit %d)\n", result);
+            }
+        }
     }
 }
 
@@ -2228,10 +2273,11 @@ int main() {
         char security_status[128] = "";
         get_security_agent_status(security_status, sizeof(security_status));
         
-        // Get health status emojis for backend and security agent
+        // Get health status emojis for backend, security agent, and sandbox
         char backend_emoji[8];
         char security_emoji[8];
-        get_health_status_emojis(backend_emoji, security_emoji);
+        char sandbox_emoji[8];
+        get_health_status_emojis(backend_emoji, security_emoji, sandbox_emoji);
         
         // Build security context part with color coding - only show actual threats
         char security_context[256] = "";
