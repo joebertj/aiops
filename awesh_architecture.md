@@ -14,18 +14,21 @@
 │ • Natural Lang  │───▶│                 │───▶│                 │───▶│                 │
 │ • Shell Commands│    │ • Readline UI   │    │ • AI Processing │    │ • Process Scan  │
 │ • Mixed Input   │    │ • Command Route │    │ • MCP Tools     │    │ • Threat Detect │
-└─────────────────┘    │ • Socket Client │    │ • File Agent    │    │ • Shared Memory │
+└─────────────────┘    │ • Socket Client │    │ • File Agent    │    │ • Config File   │
+                       │ • PTY Support   │    │ • Socket Server │    │ • RAG Analysis  │
                        └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                        │                        │
                                 │                        │                        │
                                 ▼                        ▼                        ▼
-                       ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-                       │  Unix Sockets   │    │   AI Provider   │    │  Shared Memory  │
-                       │                 │    │                 │    │                 │
-                       │ • ~/.awesh.sock │    │ • OpenAI API    │    │ • Status Updates│
-                       │ • Status Sync   │    │ • OpenRouter    │    │ • Threat Alerts │
-                       │ • Command Flow  │    │ • GPT-4/5       │    │ • Process Data  │
-                       └─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Bash Sandbox    │    │  Unix Sockets   │    │   AI Provider   │    │  Config Files   │
+│ (awesh_sandbox) │    │                 │    │                 │    │                 │
+│                 │    │ • ~/.awesh.sock │    │ • OpenAI API    │    │ • ~/.aweshrc    │
+│ • PTY Support   │    │ • ~/.awesh_sandbox.sock│ • OpenRouter    │    │ • ~/.awesh_config.ini│
+│ • Command Test  │    │ • Status Sync   │    │ • GPT-4/5       │    │ • Verbose Control│
+│ • Interactive   │    │ • Command Flow  │    │ • Streaming     │    │ • AI Settings   │
+│   Detection     │    │ • Frontend Socket│   │ • Tool Calling  │    │ • Security Rules│
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Component Details
@@ -36,30 +39,40 @@
 │                        C Frontend (awesh.c)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │ • Interactive Shell with Readline Support                      │
-│ • Smart Command Routing (AI vs Bash Detection)                 │
-│ • Built-in Commands: cd, pwd, exit                             │
-│ • Socket Communication with Backend                            │
+│ • Smart Command Routing (Sandbox → AI → Direct)                │
+│ • Built-in Commands: cd, pwd, exit, quit                       │
+│ • Socket Communication with Backend & Sandbox                  │
 │ • Security Agent Integration                                   │
-│ • Dynamic Prompt Generation                                    │
-│ • Process Health Monitoring                                    │
+│ • Dynamic Prompt Generation (0ms)                              │
+│ • Process Health Monitoring & Auto-restart                     │
+│ • PTY Support for Interactive Commands                         │
+│ • Independent Operation (works as regular bash)                │
 └─────────────────────────────────────────────────────────────────┘
 
 Key Functions:
 ├── Command Routing Logic
 │   ├── is_awesh_command() - Control commands (aweh, awes, awev, awea)
 │   ├── is_builtin() - Built-in shell commands
-│   ├── is_interactive_bash_command() - Interactive commands
-│   └── parse_ai_mode() - AI mode detection
+│   ├── test_command_in_sandbox() - Sandbox command testing
+│   ├── is_interactive_command() - Interactive command detection
+│   └── execute_command_securely() - Main command execution
 │
 ├── Communication
-│   ├── send_to_backend() - Socket communication
-│   ├── check_ai_status() - AI readiness check
-│   └── handle_ai_mode_detection() - AI processing
+│   ├── send_to_backend() - Backend socket communication
+│   ├── send_to_sandbox() - Sandbox socket communication
+│   ├── send_to_security_agent() - Security agent communication
+│   └── init_frontend_socket() - Frontend socket server
+│
+├── Process Management
+│   ├── restart_backend() - Backend process restart
+│   ├── restart_security_agent() - Security agent restart
+│   ├── restart_sandbox() - Sandbox process restart
+│   └── attempt_child_restart() - Auto-restart failed processes
 │
 └── Security Integration
     ├── get_security_agent_status() - Threat status
-    ├── get_health_status_emojis() - Process health
-    └── Shared memory access for security data
+    ├── get_health_status_emojis() - Process health (🧠:🔒:🏖️)
+    └── Config file reading (~/.aweshrc)
 ```
 
 ### 2. Python Backend (awesh_backend)
@@ -102,13 +115,14 @@ Components:
 │ • Process Monitoring (Every 5 seconds)                         │
 │ • AI-Powered Threat Detection (Every 5 minutes)                │
 │ • Pattern-Based Security Filtering                             │
-│ • Shared Memory Status Communication                            │
-│ • RAG Data Collection                                          │
+│ • Config File Reading (~/.aweshrc)                             │
+│ • RAG Data Collection & Analysis                               │
+│ • Isolated Operation (no socket server)                        │
 └─────────────────────────────────────────────────────────────────┘
 
 Security Features:
 ├── Process Scanning
-│   ├── ps -eo pid,ppid,user,comm,args
+│   ├── Backend API calls for process data
 │   ├── RAG Data Collection (Every 5s)
 │   └── AI Analysis (Every 5min)
 │
@@ -118,41 +132,77 @@ Security Features:
 │   └── Regex-based Filtering
 │
 └── Communication
-    ├── Backend Socket Connection
-    ├── Shared Memory Status Updates
+    ├── Backend Socket Connection (security analysis only)
+    ├── Config File Reading (verbose control)
     └── Threat Alert Propagation
+```
+
+### 4. Bash Sandbox (awesh_sandbox)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Bash Sandbox (awesh_sandbox)                │
+├─────────────────────────────────────────────────────────────────┤
+│ • PTY-based Bash Environment                                   │
+│ • Command Testing & Execution                                  │
+│ • Interactive Command Detection                                │
+│ • Socket Communication with Frontend                           │
+│ • Automatic Cleanup on Interactive Commands                    │
+└─────────────────────────────────────────────────────────────────┘
+
+Sandbox Features:
+├── Command Execution
+│   ├── PTY Support for proper TTY
+│   ├── 2-second timeout for command testing
+│   ├── Bash prompt detection
+│   └── Interactive command cleanup (Ctrl+C)
+│
+├── Communication
+│   ├── Unix Domain Socket (~/.awesh_sandbox.sock)
+│   ├── Command/Response Protocol
+│   └── INTERACTIVE_COMMAND detection
+│
+└── Process Management
+    ├── Persistent bash process
+    ├── Automatic cleanup on exit
+    └── Error handling and recovery
 ```
 
 ## Data Flow
 
-### 1. Command Processing Flow (Bidirectional Security Middleware)
+### 1. Command Processing Flow (4-Component Architecture)
 ```
-User Input → C Frontend → Security Middleware → Command Routing Decision
+User Input → C Frontend → Command Routing Decision
                                     │
                     ┌───────────────┼───────────────┐
                     │               │               │
                     ▼               ▼               ▼
-            Built-in Commands   Bash Commands   AI Processing
+            Built-in Commands   Sandbox Test    AI Processing
                     │               │               │
-                    │               │               ▼
-                    │               │        AI Response
+                    │               ▼               │
+                    │        Interactive?           │
                     │               │               │
-                    │               │               ▼
-                    │               │        Security Middleware
-                    │               │               │
-                    │               │               ▼
-                    │               │        awesh: Commands
-                    │               │               │
-                    │               │               ▼
-                    │               │        Command Execution
-                    │               │               │
-                    │               │               ▼
-                    │               │        Results Display
-                    │               │               │
-                    └───────────────┼───────────────┘
-                                    │
-                                    ▼
-                            User Output
+                    │        ┌──────┼──────┐       │
+                    │        │      │      │       │
+                    │        ▼      ▼      ▼       │
+                    │   Direct PTY  AI    Backend  │
+                    │   Execution   Route  Route   │
+                    │        │      │      │       │
+                    │        │      │      ▼       │
+                    │        │      │   Security   │
+                    │        │      │  Middleware  │
+                    │        │      │      │       │
+                    │        │      │      ▼       │
+                    │        │      │  Command     │
+                    │        │      │ Execution    │
+                    │        │      │      │       │
+                    │        │      │      ▼       │
+                    │        │      │  Results     │
+                    │        │      │ Display      │
+                    │        │      │      │       │
+                    └────────┼──────┼──────┼───────┘
+                             │      │      │
+                             ▼      ▼      ▼
+                        User Output
 ```
 
 ### 2. AI Response Modes (vi-inspired)
@@ -206,7 +256,8 @@ Commands:
 ├── QUERY:<prompt> - AI query
 ├── BASH_FAILED:<code>:<cmd>:<file> - Bash failure context
 ├── VERBOSE:<level> - Verbose level update
-└── AI_PROVIDER:<provider> - Provider switch
+├── AI_PROVIDER:<provider> - Provider switch
+└── GET_PROCESS_DATA - Process data for security agent
 
 Responses:
 ├── AI_READY / AI_LOADING - Status response
@@ -214,31 +265,44 @@ Responses:
 └── <AI Response> - Streaming AI output
 ```
 
-### 2. Backend ↔ Security Agent
+### 2. Frontend ↔ Sandbox (Unix Sockets)
+```
+Protocol: ~/.awesh_sandbox.sock (Unix Domain Socket)
+
+Commands:
+├── <command> - Any shell command to test/execute
+
+Responses:
+├── EXIT_CODE:<code>\nSTDOUT:<output>\nSTDERR:<error> - Normal command
+└── EXIT_CODE:-2\nSTDOUT:INTERACTIVE_COMMAND\nSTDERR:\n - Interactive command
+```
+
+### 3. Backend ↔ Security Agent
 ```
 Protocol: ~/.awesh.sock (Same socket, different messages)
 
 Security Messages:
-├── SECURITY_CHECK:<prompt> - Security validation
+├── GET_PROCESS_DATA - Request process data from backend
 ├── RAG_ADD_PROCESS:<data> - Process data for RAG
 ├── PROCESS_ANALYSIS:ANALYZE_RAG_5MIN - AI analysis request
-└── THREAT_DETECTED:<info> - Threat detection result
+└── RAG_CLEAR_PROCESS_DATA - Clear RAG data after analysis
 
 Responses:
-├── SECURITY_OK:<filtered_prompt> - Safe prompt
-├── SECURITY_BLOCKED:<reason> - Blocked prompt
-└── <AI Analysis Result> - Threat analysis
+├── <process_data> - Process information from ps command
+├── <AI Analysis Result> - Threat analysis
+└── OK - Acknowledgment
 ```
 
-### 3. Security Agent ↔ Frontend
+### 4. Security Agent ↔ Frontend
 ```
-Protocol: Shared Memory (awesh_security_status_<user>)
+Protocol: Config File (~/.aweshrc)
 
 Status Updates:
-├── ✅ No threats detected
-├── 🔴 HIGH: <threat_info>
-├── 🟡 MEDIUM: <threat_info>
-└── 🟢 LOW: <threat_info>
+├── VERBOSE=<level> - Verbose level control
+├── AI_PROVIDER=<provider> - AI provider setting
+└── Other configuration settings
+
+Note: Security agent reads config file directly, no socket communication
 ```
 
 ## Configuration
@@ -261,23 +325,33 @@ Default: Operations-focused prompt for infrastructure management
 ## Key Features
 
 ### 1. Smart Command Routing
-- **Bash Triggers**: Known commands, shell syntax, pipes, redirects
+- **Sandbox Testing**: All commands tested in sandbox first
+- **Interactive Detection**: Commands that don't return prompt → PTY execution
 - **AI Triggers**: Natural language, questions, analysis requests
-- **Built-in Commands**: cd, pwd, exit (handled by frontend)
+- **Built-in Commands**: cd, pwd, exit, quit (handled by frontend)
+- **Fallback**: Direct bash execution when no children ready
 
 ### 2. Security Integration
 - **Real-time Monitoring**: Process scanning every 5 seconds
 - **AI Threat Detection**: Analysis every 5 minutes
 - **Pattern Filtering**: Dangerous commands and sensitive data
-- **Visual Indicators**: Emoji-based status in prompt
+- **Visual Indicators**: Emoji-based status in prompt (🧠:🔒:🏖️)
+- **Isolated Security**: Security agent reads config, no socket server
 
 ### 3. Performance Optimizations
-- **Caching**: Prompt data cached for 5 seconds
-- **Non-blocking**: Backend starts in background
+- **Instant Prompt**: 0ms prompt generation (no blocking calls)
+- **Non-blocking**: All children start in background
 - **Streaming**: Real-time AI responses
 - **Health Monitoring**: Automatic process restart
+- **Independent Operation**: Works as regular bash when needed
 
-### 4. MCP Integration
+### 4. PTY Support
+- **Interactive Commands**: vi, top, ssh, python, etc. work properly
+- **TTY Detection**: Sandbox detects interactive commands automatically
+- **Clean State**: Sandbox cleaned up after interactive detection
+- **Direct Execution**: Interactive commands run in frontend with proper TTY
+
+### 5. MCP Integration
 - **Tool Execution**: Secure tool calling through MCP
 - **File Operations**: FileAgent for file reading/analysis
 - **Safety**: No direct shell execution from AI
@@ -295,12 +369,26 @@ awesh
 
 ### Example Session
 ```bash
-awesh> ls -la                              # → Bash execution
-awesh> what files are here?                # → AI analysis
-awesh> find . -name "*.py"                 # → Bash execution  
-awesh> explain this error                  # → AI interpretation
-awesh> cat file.txt | grep error           # → Bash (pipe detected)
-awesh> summarize this directory structure  # → AI analysis
+🧠:🔒:🏖️:joebert@maximaal:~:☸️default:🌿main
+> ls -la                              # → Sandbox → Bash execution
+> vi file.txt                         # → Sandbox → Interactive → PTY execution
+> what files are here?                # → AI analysis
+> find . -name "*.py"                 # → Sandbox → Bash execution  
+> top                                 # → Sandbox → Interactive → PTY execution
+> explain this error                  # → AI interpretation
+> cat file.txt | grep error           # → Sandbox → Bash (pipe detected)
+> summarize this directory structure  # → AI analysis
+> awev off                            # → Built-in command (verbose off)
+> exit                                # → Built-in command (clean exit)
 ```
+
+### Status Emojis
+- **🧠** = Backend ready (AI available)
+- **⏳** = Backend loading/not ready
+- **💀** = Backend failed
+- **🔒** = Security agent ready
+- **⏳** = Security agent not ready
+- **🏖️** = Sandbox ready
+- **⏳** = Sandbox not ready
 
 This architecture provides a robust, secure, and intelligent shell environment that seamlessly blends traditional command-line operations with AI assistance while maintaining the performance and security requirements of operations professionals.

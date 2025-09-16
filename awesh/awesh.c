@@ -1878,6 +1878,14 @@ int test_command_in_sandbox(const char* cmd) {
     int result = send_to_sandbox(cmd, response, sizeof(response));
     
     if (result == 0) {
+        // Check if sandbox detected an interactive command
+        if (strstr(response, "INTERACTIVE_COMMAND")) {
+            if (state.verbose >= 2) {
+                printf("🖥️ Sandbox detected interactive command: %s\n", cmd);
+            }
+            return -2;  // Special return code for interactive commands
+        }
+        
         // Command succeeded - check if there's output
         if (strlen(response) > 0) {
             // Store output in bash_sandbox.output_buffer for compatibility
