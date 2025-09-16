@@ -129,6 +129,8 @@ class AweshSocketBackend:
                 return await self._add_process_to_rag(command)
             elif command.startswith("PROCESS_ANALYSIS:"):
                 return await self._handle_rag_analysis_5min()
+            elif command == "GET_PROCESS_DATA":
+                return await self._get_process_data()
             
             # Bash execution handled by C frontend - send everything to AI
             debug_log("process_command: Sending to AI (bash handled by frontend)")
@@ -138,6 +140,35 @@ class AweshSocketBackend:
             debug_log(f"process_command: Exception: {e}")
             return f"Backend error: {e}\n"
     
+    async def _get_process_data(self) -> str:
+        """Get process data for security agent (socket-based, no direct system calls)"""
+        try:
+            import subprocess
+            debug_log("Getting process data for security agent")
+            
+            # Execute ps command to get process data
+            result = subprocess.run(
+                ["ps", "-eo", "pid,ppid,user,comm,args"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                process_data = result.stdout
+                debug_log(f"Retrieved {len(process_data)} chars of process data")
+                return process_data
+            else:
+                debug_log(f"ps command failed: {result.stderr}")
+                return f"Error: ps command failed: {result.stderr}\n"
+                
+        except subprocess.TimeoutExpired:
+            debug_log("ps command timed out")
+            return "Error: ps command timed out\n"
+        except Exception as e:
+            debug_log(f"_get_process_data: Exception: {e}")
+            return f"Error: {e}\n"
+
     async def _add_process_to_rag(self, command: str) -> str:
         """Add process data to RAG system (security agent only)"""
         try:
