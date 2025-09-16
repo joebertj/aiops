@@ -62,7 +62,9 @@ class AweshAIClient:
             # Using standard OpenAI
             api_key = os.getenv('OPENAI_API_KEY')
             if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable not set")
+                debug_log("Warning: OPENAI_API_KEY not set - AI will not be available")
+                self.client = None
+                return  # Skip initialization, but don't crash
             debug_log("Creating OpenAI client...")
             self.client = AsyncOpenAI(api_key=api_key)
             debug_log("OpenAI client created successfully")
@@ -169,7 +171,8 @@ Remember: Terminal users want to execute and see results. Give them the exact co
             String chunks of the AI response
         """
         if not self.client:
-            raise RuntimeError("AI client not initialized. Call initialize() first.")
+            yield "❌ AI not available - OPENAI_API_KEY not set"
+            return
             
         messages = []
         

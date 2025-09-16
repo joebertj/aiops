@@ -70,6 +70,9 @@ class AweshSocketBackend:
             import traceback
             traceback.print_exc(file=sys.stderr)
             self.ai_ready = False
+            # Still mark backend as ready for non-AI commands
+            if "OPENAI_API_KEY" in str(e):
+                print("Backend: Running without AI - set OPENAI_API_KEY to enable AI features", file=sys.stderr)
     
     
     
@@ -207,7 +210,11 @@ Respond with:
 """
             
             # Use direct AI access (bypass all agents)
-            response = await self.ai_client.get_ai_response(analysis_prompt)
+            # Use process_prompt method instead of get_ai_response
+            response_chunks = []
+            async for chunk in self.ai_client.process_prompt(analysis_prompt):
+                response_chunks.append(chunk)
+            response = "".join(response_chunks)
             
             if response and "SUSPICIOUS:" in response:
                 debug_log(f"AI detected suspicious activity: {response}")
