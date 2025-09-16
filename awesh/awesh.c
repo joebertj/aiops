@@ -356,28 +356,16 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* s
         strcpy(backend_emoji, "🚫");  // Not running (different from security)
     }
     
-    // Security agent health emoji - unique emojis for each state
+    // Security agent health emoji - just check if socket exists (no blocking calls)
     if (security_agent_socket_fd >= 0) {
-        // Test if security agent is actually responding by sending a test command
-        char test_response[64];
-        if (send_to_security_agent("STATUS", test_response, sizeof(test_response)) == 0) {
-            strcpy(security_emoji, "🔒");  // Running and responding
-        } else {
-            strcpy(security_emoji, "⚠️");  // Not responding (middleware unavailable)
-        }
+        strcpy(security_emoji, "🔒");  // Socket exists, assume responding
     } else {
-        strcpy(security_emoji, "⛔");  // Not started (different from both)
+        strcpy(security_emoji, "⛔");  // Not started
     }
     
-    // Sandbox health emoji
+    // Sandbox health emoji - just check if process exists (no blocking calls)
     if (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) {
-        // Test if sandbox is responding by sending a test command
-        char test_response[64];
-        if (send_to_sandbox("echo test", test_response, sizeof(test_response)) == 0) {
-            strcpy(sandbox_emoji, "🏖️");  // Running and responding
-        } else {
-            strcpy(sandbox_emoji, "⚠️");  // Not responding
-        }
+        strcpy(sandbox_emoji, "🏖️");  // Process exists, assume responding
     } else {
         strcpy(sandbox_emoji, "⛔");  // Not started
     }
