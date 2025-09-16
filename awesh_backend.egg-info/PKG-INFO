@@ -1,14 +1,12 @@
-Metadata-Version: 2.4
-Name: awesh_backend
+Metadata-Version: 2.1
+Name: awesh-backend
 Version: 0.1.0
 Summary: Backend module for awesh shell
+Home-page: UNKNOWN
+License: UNKNOWN
+Platform: UNKNOWN
 Requires-Python: >=3.8
 License-File: LICENSE
-Requires-Dist: openai>=1.0.0
-Requires-Dist: chromadb>=0.4.0
-Requires-Dist: sentence-transformers>=2.2.0
-Requires-Dist: psutil>=5.9.0
-Dynamic: license-file
-Dynamic: requires-dist
-Dynamic: requires-python
-Dynamic: summary
+
+UNKNOWN
+

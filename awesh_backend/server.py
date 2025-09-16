@@ -29,7 +29,7 @@ class AweshSocketBackend:
     """Socket-based backend for C frontend"""
     
     def __init__(self):
-        self.config = Config.load(Path.home() / '.aweshrc')
+        self.config = Config.load(Path.home() / '.awesh_config.ini')
         self.ai_client = None
         # Bash execution handled by C frontend
         self.ai_ready = False

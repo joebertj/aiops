@@ -33,6 +33,9 @@ char* parse_ai_mode(const char* input);
 void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
 int send_to_backend(const char* query, char* response, size_t response_size);
+int send_to_security_agent(const char* query, char* response, size_t response_size);
+void handle_interactive_bash(const char* cmd);
+void execute_command_securely(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
@@ -165,11 +168,10 @@ void get_kubectl_namespace(char* namespace, size_t size) {
 
 // AI-driven mode detection: Let AI decide command vs edit mode
 char* parse_ai_mode(const char* input) {
-    // Suppress unused parameter warning
-    (void)input;
-    // For now, send everything to AI for mode detection
-    // AI will return "awesh_cmd: <command>" or "awesh_edit: <edit>"
-    return "ai_detect";  // Let AI decide
+    if (!input || strlen(input) == 0) return "ai_detect";
+    
+    // For natural language queries, let AI decide
+    return "ai_detect";
 }
 
 // Functions will be defined after state and constants
@@ -563,6 +565,59 @@ int send_to_backend(const char* query, char* response, size_t response_size) {
     return -1;  // Timeout or error
 }
 
+int send_to_security_agent(const char* query, char* response, size_t response_size) {
+    if (security_agent_socket_fd < 0) {
+        return -1;  // No security agent connection
+    }
+    
+    // Create a client socket to connect to security agent
+    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        return -1;
+    }
+    
+    // Connect to security agent socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (connect(client_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(client_fd);
+        return -1;
+    }
+    
+    // Send query to security agent
+    if (send(client_fd, query, strlen(query), 0) < 0) {
+        close(client_fd);
+        return -1;
+    }
+    
+    // Read response with timeout
+    fd_set readfds;
+    struct timeval timeout;
+    
+    FD_ZERO(&readfds);
+    FD_SET(client_fd, &readfds);
+    timeout.tv_sec = 5;  // 5 second timeout
+    timeout.tv_usec = 0;
+    
+    int result = select(client_fd + 1, &readfds, NULL, NULL, &timeout);
+    
+    if (result > 0) {
+        // Data available, read response
+        ssize_t bytes_received = recv(client_fd, response, response_size - 1, 0);
+        close(client_fd);
+        if (bytes_received > 0) {
+            response[bytes_received] = '\0';
+            return 0;  // Success
+        }
+    }
+    
+    close(client_fd);
+    return -1;  // Timeout or error
+}
+
 // Handle AI mode detection: Let AI decide command vs edit mode
 void handle_ai_mode_detection(const char* input) {
     if (state.ai_status != AI_READY) {
@@ -797,25 +852,45 @@ int start_backend() {
         return -1;
     }
     
-    // Parent: wait a bit for backend to start
-    sleep(1);
+    // Parent: wait for backend to start with retry mechanism
+    int retries = 0;
+    int max_retries = 10;  // 10 seconds total wait time
     
-    // Connect to backend socket
-    state.socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (state.socket_fd < 0) {
-        perror("Failed to create socket");
-        return -1;
-    }
-    
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-    
-    if (connect(state.socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("Failed to connect to backend");
+    while (retries < max_retries) {
+        sleep(1);
+        retries++;
+        
+        // Try to connect to backend socket
+        state.socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (state.socket_fd < 0) {
+            perror("Failed to create socket");
+            return -1;
+        }
+        
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+        
+        if (connect(state.socket_fd, (struct sockaddr*)&addr, sizeof(addr)) >= 0) {
+            // Connection successful
+            if (state.verbose >= 1) {
+                printf("🔌 Connected to backend after %d seconds\n", retries);
+            }
+            break;
+        }
+        
+        // Connection failed, close socket and retry
         close(state.socket_fd);
         state.socket_fd = -1;
+        
+        if (state.verbose >= 1) {
+            printf("⏳ Waiting for backend to start... (%d/%d)\n", retries, max_retries);
+        }
+    }
+    
+    if (retries >= max_retries) {
+        perror("Failed to connect to backend after 10 seconds");
         return -1;
     }
     
@@ -1206,9 +1281,9 @@ int is_shell_syntax_command(const char* cmd) {
 }
 
 void handle_interactive_bash(const char* cmd) {
-    // Route command through security agent middleware
-    if (state.socket_fd >= 0) {
-        // Send command to security agent middleware for validation
+    // Commands that need security middleware validation (complex shell syntax, etc.)
+    if (security_agent_socket_fd >= 0) {
+        // Send command directly to security agent for validation
         char security_request[MAX_CMD_LEN + 50];
         snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
         
@@ -1216,9 +1291,9 @@ void handle_interactive_bash(const char* cmd) {
             printf("🔒 Security middleware: validating command: %s\n", cmd);
         }
         
-        // Send to backend (which routes to security agent middleware)
+        // Send directly to security agent (not through backend)
         char response[MAX_RESPONSE_LEN];
-        if (send_to_backend(security_request, response, sizeof(response)) == 0) {
+        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
             // Parse response from security middleware
             if (strncmp(response, "SECURITY_OK:", 12) == 0) {
                 // Security middleware approved - execute command
@@ -1236,16 +1311,16 @@ void handle_interactive_bash(const char* cmd) {
                 printf("%s", response);
             }
         } else {
-            // Backend communication failed - fallback to direct execution
+            // Security agent communication failed - fallback to direct execution
             if (state.verbose >= 1) {
                 printf("⚠️ Security middleware unavailable, executing directly...\n");
             }
             execute_command_securely(cmd);
         }
     } else {
-        // No backend connection - fallback to direct execution
+        // No security agent connection - fallback to direct execution
         if (state.verbose >= 1) {
-            printf("⚠️ No backend connection, executing directly...\n");
+            printf("⚠️ No security agent connection, executing directly...\n");
         }
         execute_command_securely(cmd);
     }
@@ -1456,25 +1531,16 @@ int main() {
     printf("awesh v0.1.0 - Awe-Inspired Workspace Environment Shell\n");
     printf("💡 Type 'aweh' to see available control commands\n");
     
-    // Start backend in background (non-blocking)
-    pid_t backend_pid = fork();
-    if (backend_pid == 0) {
-        // Child: start backend
+    // Start backend (non-blocking)
     if (start_backend() != 0) {
-            exit(1);
-        }
-        exit(0);
-    } else if (backend_pid > 0) {
-        state.backend_pid = backend_pid;
-        if (state.verbose >= 1) {
-            printf("🐍 Backend (Python) started (PID: %d)\n", backend_pid);
-        }
-        // Don't wait for backend - let it initialize in background
-    } else {
         if (state.verbose >= 1) {
             printf("⚠️ Warning: Could not start backend\n");
         }
         state.ai_status = AI_FAILED;
+    } else {
+        if (state.verbose >= 1) {
+            printf("🐍 Backend (Python) started (PID: %d)\n", state.backend_pid);
+        }
     }
     
     // Main shell loop - start immediately, don't wait for backend
@@ -1635,22 +1701,23 @@ int main() {
         // AI-driven mode detection: Let AI decide command vs edit mode
         char* mode = parse_ai_mode(line);
         
-        // Handle command - priority order with AI mode detection
+        // Handle command - priority order: aweX commands, then direct bash commands, then AI
         if (is_awesh_command(line)) {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
+            // Built-in commands (cd, pwd, exit) - highest priority after aweX
             handle_builtin(line);
         } else if (is_shell_syntax_command(line)) {
-            // Commands with shell syntax (like "find . -name *.py") go to bash
+            // Commands with shell syntax (like "find . -name *.py") - through security middleware
             handle_interactive_bash(line);
         } else if (is_interactive_bash_command(line)) {
-            // Other interactive commands go to bash
-            handle_interactive_bash(line);
+            // Direct bash commands (ls, cat, grep, etc.) - high priority, no AI, no security middleware
+            execute_command_securely(line);
         } else if (strcmp(mode, "ai_detect") == 0) {
-            // AI mode detection: Send to backend for AI to decide
+            // Natural language queries - send to AI for processing
             handle_ai_mode_detection(line);
         } else {
-            // Fallback: Try bash directly first, send to backend only on failure
+            // Fallback: Try bash first, send to AI only on failure
             handle_bash_with_ai_fallback(line);
         }
         
