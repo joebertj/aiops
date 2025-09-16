@@ -25,7 +25,7 @@ backend:
 	@echo "Backend package ready at $(BACKEND_PKG)"
 
 clean:
-	rm -f $(TARGET) $(SECURITY_AGENT)
+	rm -f $(TARGET) $(SECURITY_AGENT) $(SANDBOX)
 
 install: $(TARGET) backend
 	@echo "Installing awesh to ~/.local/bin..."

@@ -25,6 +25,10 @@ static char socket_path[512];
 static int security_agent_socket_fd = -1;
 static char security_agent_socket_path[512];
 
+// Sandbox socket communication
+static int sandbox_socket_fd = -1;
+static char sandbox_socket_path[512];
+
 // Function declarations
 void get_git_branch(char* branch, size_t size);
 void get_kubectl_context(char* context, size_t size);
@@ -51,7 +55,12 @@ void log_health_status(const char* process_name, pid_t pid, int is_running);
 void get_health_status_emojis(char* backend_emoji, char* security_emoji);
 int restart_backend(void);
 int restart_security_agent(void);
+int restart_sandbox(void);
 void attempt_child_restart(void);
+void send_verbose_to_security_agent(int verbose_level);
+int init_sandbox_socket(void);
+void cleanup_sandbox_socket(void);
+int send_to_sandbox(const char* cmd, char* response, size_t response_size);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -225,12 +234,13 @@ typedef enum {
 typedef struct {
     int backend_pid;
     int security_agent_pid;
+    int sandbox_pid;
     int socket_fd;
     ai_status_t ai_status;
     int verbose;         // 0 = silent, 1 = show AI status + debug, 2+ = more verbose
 } awesh_state_t;
 
-static awesh_state_t state = {0, 0, -1, AI_LOADING, 0};  // Default to silent (verbose=0)
+static awesh_state_t state = {0, 0, -1, -1, AI_LOADING, 0};  // Default to silent (verbose=0)
 
 // Performance debugging
 void debug_perf(const char* operation, long start_time) {
@@ -274,24 +284,48 @@ void check_child_process_health(void) {
         }
     }
     
-    // Check security agent health (we need to track its PID)
-    // For now, we'll check if the socket is still available
-    if (security_agent_socket_fd >= 0) {
-        // Try to accept a connection to test if security agent is alive
-        fd_set readfds;
-        struct timeval timeout;
-        FD_ZERO(&readfds);
-        FD_SET(security_agent_socket_fd, &readfds);
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 1000; // 1ms timeout
+    // Check security agent health
+    if (state.security_agent_pid > 0) {
+        int security_running = is_process_running(state.security_agent_pid);
+        log_health_status("Security Agent", state.security_agent_pid, security_running);
         
-        if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) < 0) {
+        if (!security_running) {
             if (state.verbose >= 1) {
-                fprintf(stderr, "💀 HEALTH: Security Agent socket error, may have died\n");
+                fprintf(stderr, "⚠️ Security Agent process died, will attempt restart\n");
             }
-        } else if (state.verbose >= 2) {
-            fprintf(stderr, "💚 HEALTH: Security Agent socket is responsive\n");
+            state.security_agent_pid = -1;
+            security_agent_socket_fd = -1;
         }
+    }
+    
+    // Check sandbox health
+    if (state.sandbox_pid > 0) {
+        int sandbox_running = is_process_running(state.sandbox_pid);
+        log_health_status("Sandbox", state.sandbox_pid, sandbox_running);
+        
+        if (!sandbox_running) {
+            if (state.verbose >= 1) {
+                fprintf(stderr, "⚠️ Sandbox process died, will attempt restart\n");
+            }
+            state.sandbox_pid = -1;
+            sandbox_socket_fd = -1;
+        }
+    }
+    
+    // Check if security agent needs restart
+    if (state.security_agent_pid <= 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "🔄 AUTO-RESTART: Security Agent failed, attempting restart\n");
+        }
+        restart_security_agent();
+    }
+    
+    // Check if sandbox needs restart
+    if (state.sandbox_pid <= 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "🔄 AUTO-RESTART: Sandbox failed, attempting restart\n");
+        }
+        restart_sandbox();
     }
 }
 
@@ -424,6 +458,52 @@ int restart_security_agent(void) {
     }
 }
 
+int restart_sandbox(void) {
+    if (state.verbose >= 1) {
+        fprintf(stderr, "🔄 RESTART: Attempting to restart Sandbox...\n");
+    }
+    
+    // Clean up existing sandbox socket
+    cleanup_sandbox_socket();
+    
+    // Reinitialize socket
+    if (init_sandbox_socket() != 0) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "❌ RESTART: Failed to reinitialize Sandbox socket\n");
+        }
+        return -1;
+    }
+    
+    // Start new sandbox process
+    pid_t new_sandbox_pid = fork();
+    if (new_sandbox_pid == 0) {
+        // Child: ignore SIGINT and start sandbox
+        signal(SIGINT, SIG_IGN);
+        
+        const char* home = getenv("HOME");
+        if (home) {
+            char sandbox_path[512];
+            snprintf(sandbox_path, sizeof(sandbox_path), "%s/.local/bin/awesh_sandbox", home);
+            execl(sandbox_path, "awesh_sandbox", NULL);
+        }
+        
+        execl("./awesh_sandbox", "awesh_sandbox", NULL);
+        perror("Failed to start Sandbox");
+        exit(1);
+    } else if (new_sandbox_pid > 0) {
+        state.sandbox_pid = new_sandbox_pid;
+        if (state.verbose >= 1) {
+            fprintf(stderr, "✅ RESTART: Sandbox restarted (PID: %d)\n", new_sandbox_pid);
+        }
+        return 0;
+    } else {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "❌ RESTART: Failed to restart Sandbox\n");
+        }
+        return -1;
+    }
+}
+
 void attempt_child_restart(void) {
     // Check if backend needs restart
     if (state.backend_pid <= 0 || !is_process_running(state.backend_pid)) {
@@ -434,11 +514,19 @@ void attempt_child_restart(void) {
     }
     
     // Check if security agent needs restart
-    if (security_agent_socket_fd < 0) {
+    if (state.security_agent_pid <= 0 || !is_process_running(state.security_agent_pid)) {
         if (state.verbose >= 1) {
             fprintf(stderr, "🔄 AUTO-RESTART: Security Agent failed, attempting restart\n");
         }
         restart_security_agent();
+    }
+    
+    // Check if sandbox needs restart
+    if (state.sandbox_pid <= 0 || !is_process_running(state.sandbox_pid)) {
+        if (state.verbose >= 1) {
+            fprintf(stderr, "🔄 AUTO-RESTART: Sandbox failed, attempting restart\n");
+        }
+        restart_sandbox();
     }
 }
 
@@ -606,6 +694,142 @@ int send_to_security_agent(const char* query, char* response, size_t response_si
     
     // Send query to security agent
     if (send(client_fd, query, strlen(query), 0) < 0) {
+        close(client_fd);
+        return -1;
+    }
+    
+    // Read response with timeout
+    fd_set readfds;
+    struct timeval timeout;
+    
+    FD_ZERO(&readfds);
+    FD_SET(client_fd, &readfds);
+    timeout.tv_sec = 5;  // 5 second timeout
+    timeout.tv_usec = 0;
+    
+    int result = select(client_fd + 1, &readfds, NULL, NULL, &timeout);
+    
+    if (result > 0) {
+        // Data available, read response
+        ssize_t bytes_received = recv(client_fd, response, response_size - 1, 0);
+        close(client_fd);
+        if (bytes_received > 0) {
+            response[bytes_received] = '\0';
+            return 0;  // Success
+        }
+    }
+    
+    close(client_fd);
+    return -1;  // Timeout or error
+}
+
+// Send verbose level to security agent
+void send_verbose_to_security_agent(int verbose_level) {
+    if (security_agent_socket_fd < 0) {
+        return;  // No security agent connection
+    }
+    
+    // Create a client socket to connect to security agent
+    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        return;
+    }
+    
+    // Connect to security agent socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (connect(client_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(client_fd);
+        return;
+    }
+    
+    // Send verbose command to security agent
+    char verbose_cmd[32];
+    snprintf(verbose_cmd, sizeof(verbose_cmd), "VERBOSE:%d", verbose_level);
+    
+    if (send(client_fd, verbose_cmd, strlen(verbose_cmd), 0) < 0) {
+        close(client_fd);
+        return;
+    }
+    
+    close(client_fd);
+}
+
+// Initialize sandbox socket
+int init_sandbox_socket(void) {
+    // Initialize Sandbox socket path
+    const char* home = getenv("HOME");
+    if (!home) return -1;
+
+    snprintf(sandbox_socket_path, sizeof(sandbox_socket_path),
+             "%s/.awesh_sandbox.sock", home);
+    
+    // Remove old socket if it exists
+    unlink(sandbox_socket_path);
+    
+    // Create socket
+    sandbox_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sandbox_socket_fd < 0) {
+        return -1;
+    }
+    
+    // Bind socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, sandbox_socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (bind(sandbox_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(sandbox_socket_fd);
+        return -1;
+    }
+    
+    // Listen for connections
+    if (listen(sandbox_socket_fd, 1) < 0) {
+        close(sandbox_socket_fd);
+        return -1;
+    }
+    
+    return 0;
+}
+
+// Cleanup sandbox socket
+void cleanup_sandbox_socket(void) {
+    if (sandbox_socket_fd != -1) {
+        close(sandbox_socket_fd);
+        sandbox_socket_fd = -1;
+    }
+    unlink(sandbox_socket_path);
+}
+
+// Send command to sandbox
+int send_to_sandbox(const char* cmd, char* response, size_t response_size) {
+    if (sandbox_socket_fd < 0) {
+        return -1;  // No sandbox connection
+    }
+    
+    // Create a client socket to connect to sandbox
+    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        return -1;
+    }
+    
+    // Connect to sandbox socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, sandbox_socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (connect(client_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(client_fd);
+        return -1;
+    }
+    
+    // Send command to sandbox
+    if (send(client_fd, cmd, strlen(cmd), 0) < 0) {
         close(client_fd);
         return -1;
     }
@@ -809,15 +1033,77 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
         }
     }
     
-    // Cleanup Security Agent
-    if (state.verbose >= 1) {
-        printf("🔒 CLEANUP: Terminating Security Agent\n");
+    // Cleanup Security Agent process
+    if (state.security_agent_pid > 0) {
+        if (state.verbose >= 1) {
+            printf("🔒 CLEANUP: Terminating Security Agent process (PID: %d)\n", state.security_agent_pid);
+        }
+        
+        // Send SIGTERM first (graceful shutdown)
+        kill(state.security_agent_pid, SIGTERM);
+        
+        // Wait up to 3 seconds for graceful shutdown
+        int status;
+        pid_t result = waitpid(state.security_agent_pid, &status, WNOHANG);
+        if (result == 0) {
+            // Process still running, wait a bit
+            sleep(1);
+            result = waitpid(state.security_agent_pid, &status, WNOHANG);
+            if (result == 0) {
+                // Still running, force kill
+                if (state.verbose >= 1) {
+                    printf("⚠️ CLEANUP: Security Agent didn't respond to SIGTERM, sending SIGKILL\n");
+                }
+                kill(state.security_agent_pid, SIGKILL);
+                waitpid(state.security_agent_pid, &status, 0);
+            }
+        }
+        
+        if (state.verbose >= 2) {
+            printf("✅ CLEANUP: Security Agent process terminated\n");
+        }
     }
+    
+    // Cleanup Security Agent socket
     cleanup_security_agent_socket();
     
-    // Cleanup bash sandbox
+    // Cleanup Sandbox process
+    if (state.sandbox_pid > 0) {
+        if (state.verbose >= 1) {
+            printf("🏖️ CLEANUP: Terminating Sandbox process (PID: %d)\n", state.sandbox_pid);
+        }
+        
+        // Send SIGTERM first (graceful shutdown)
+        kill(state.sandbox_pid, SIGTERM);
+        
+        // Wait up to 3 seconds for graceful shutdown
+        int status;
+        pid_t result = waitpid(state.sandbox_pid, &status, WNOHANG);
+        if (result == 0) {
+            // Process still running, wait a bit
+            sleep(1);
+            result = waitpid(state.sandbox_pid, &status, WNOHANG);
+            if (result == 0) {
+                // Still running, force kill
+                if (state.verbose >= 1) {
+                    printf("⚠️ CLEANUP: Sandbox didn't respond to SIGTERM, sending SIGKILL\n");
+                }
+                kill(state.sandbox_pid, SIGKILL);
+                waitpid(state.sandbox_pid, &status, 0);
+            }
+        }
+        
+        if (state.verbose >= 2) {
+            printf("✅ CLEANUP: Sandbox process terminated\n");
+        }
+    }
+    
+    // Cleanup Sandbox socket
+    cleanup_sandbox_socket();
+    
+    // Cleanup bash sandbox (legacy)
     if (state.verbose >= 1) {
-        printf("🏖️ CLEANUP: Terminating bash sandbox\n");
+        printf("🏖️ CLEANUP: Terminating legacy bash sandbox\n");
     }
     cleanup_bash_sandbox();
     
@@ -1129,30 +1415,35 @@ void handle_awesh_command(const char* cmd) {
             // Set verbose level 0 (silent)
             update_config_file("VERBOSE", "0");
             send_command("VERBOSE:0");
+            send_verbose_to_security_agent(0);  // Send to security agent
             state.verbose = 0;
             printf("🔧 Verbose level set to 0 (silent)\n");
         } else if (strcmp(cmd, "awev 1") == 0) {
             // Set verbose level 1 (info)
             update_config_file("VERBOSE", "1");
             send_command("VERBOSE:1");
+            send_verbose_to_security_agent(1);  // Send to security agent
             state.verbose = 1;
             printf("🔧 Verbose level set to 1 (info)\n");
         } else if (strcmp(cmd, "awev 2") == 0) {
             // Set verbose level 2 (debug)
             update_config_file("VERBOSE", "2");
             send_command("VERBOSE:2");
+            send_verbose_to_security_agent(2);  // Send to security agent
             state.verbose = 2;
             printf("🔧 Verbose level set to 2 (debug)\n");
         } else if (strcmp(cmd, "awev on") == 0) {
             // Legacy: Enable verbose logging (level 1)
             update_config_file("VERBOSE", "1");
             send_command("VERBOSE:1");
+            send_verbose_to_security_agent(1);  // Send to security agent
             state.verbose = 1;
             printf("🔧 Verbose logging enabled (level 1)\n");
         } else if (strcmp(cmd, "awev off") == 0) {
             // Legacy: Disable verbose logging (level 0)
             update_config_file("VERBOSE", "0");
             send_command("VERBOSE:0");
+            send_verbose_to_security_agent(0);  // Send to security agent
             state.verbose = 0;
             printf("🔧 Verbose logging disabled (level 0)\n");
         } else {
@@ -1680,11 +1971,36 @@ int main() {
         printf("⚠️ Warning: Could not initialize Security Agent socket\n");
     }
     
-    // Spawn bash sandbox for instant command testing
-    if (spawn_bash_sandbox() != 0) {
-        printf("⚠️ Warning: Could not spawn bash sandbox\n");
+    // Initialize Sandbox socket
+    if (init_sandbox_socket() != 0) {
+        printf("⚠️ Warning: Could not initialize Sandbox socket\n");
+    }
+    
+    // Start Sandbox as separate process (non-blocking)
+    pid_t sandbox_pid = fork();
+    if (sandbox_pid == 0) {
+        // Child: ignore SIGINT to prevent Ctrl+C from reaching Sandbox
+        signal(SIGINT, SIG_IGN);
+        
+        // Start Sandbox from ~/.local/bin
+        const char* home = getenv("HOME");
+        if (home) {
+            char sandbox_path[512];
+            snprintf(sandbox_path, sizeof(sandbox_path), "%s/.local/bin/awesh_sandbox", home);
+            execl(sandbox_path, "awesh_sandbox", NULL);
+        }
+        // Fallback to local binary
+        execl("./awesh_sandbox", "awesh_sandbox", NULL);
+        perror("Failed to start Sandbox");
+        exit(1);
+    } else if (sandbox_pid < 0) {
+        printf("⚠️ Warning: Could not start Sandbox\n");
     } else {
-        printf("DEBUG: Bash sandbox initialized successfully\n");
+        state.sandbox_pid = sandbox_pid;
+        if (state.verbose >= 1) {
+            printf("🏖️ Sandbox (awesh_sandbox) started (PID: %d)\n", sandbox_pid);
+        }
+        // Don't wait for Sandbox - let it initialize in background
     }
     
     // Start Security Agent as separate process (non-blocking)
