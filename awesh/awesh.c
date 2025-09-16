@@ -15,9 +15,9 @@
 #include <sys/stat.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <ctype.h>
 #include <time.h>
 #include <sys/time.h>
-#include <ctype.h>
 
 static char socket_path[512];
 
@@ -46,6 +46,7 @@ void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
+int is_ai_query(const char* cmd);
 int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
 void send_to_middleware(const char* cmd);
@@ -1980,6 +1981,67 @@ void send_to_middleware(const char* cmd) {
     }
 }
 
+// Check if command looks like an AI query (natural language)
+int is_ai_query(const char* cmd) {
+    // Simple heuristics for AI queries
+    const char* ai_indicators[] = {
+        "write", "create", "generate", "explain", "analyze", "summarize",
+        "what", "how", "why", "when", "where", "who", "which",
+        "help", "assist", "suggest", "recommend", "find", "search",
+        "poem", "story", "code", "script", "function", "class",
+        "error", "bug", "issue", "problem", "fix", "solution",
+        NULL
+    };
+    
+    // Convert to lowercase for comparison
+    char lower_cmd[1024];
+    strncpy(lower_cmd, cmd, sizeof(lower_cmd) - 1);
+    lower_cmd[sizeof(lower_cmd) - 1] = '\0';
+    
+    for (int i = 0; lower_cmd[i]; i++) {
+        lower_cmd[i] = tolower(lower_cmd[i]);
+    }
+    
+    // Check for AI indicators
+    for (int i = 0; ai_indicators[i] != NULL; i++) {
+        if (strstr(lower_cmd, ai_indicators[i])) {
+            return 1;  // Looks like an AI query
+        }
+    }
+    
+    // Check for question marks
+    if (strchr(cmd, '?')) {
+        return 1;  // Contains question mark
+    }
+    
+    // Check for shell-like patterns (if it looks like shell, it's probably not AI)
+    if (strchr(cmd, '|') || strchr(cmd, '>') || strchr(cmd, '<') || 
+        strchr(cmd, '&') || strchr(cmd, ';') || strchr(cmd, '`')) {
+        return 0;  // Shell-like syntax
+    }
+    
+    // Check for known shell commands
+    const char* shell_commands[] = {
+        "ls", "cd", "pwd", "cat", "grep", "find", "ps", "top", "kill",
+        "mkdir", "rmdir", "rm", "cp", "mv", "chmod", "chown", "sudo",
+        "git", "docker", "kubectl", "ssh", "scp", "rsync", "tar", "gzip",
+        "vim", "nano", "emacs", "less", "more", "head", "tail", "sort",
+        "awk", "sed", "cut", "uniq", "wc", "diff", "patch", "make",
+        NULL
+    };
+    
+    char first_word[256];
+    sscanf(cmd, "%255s", first_word);
+    
+    for (int i = 0; shell_commands[i] != NULL; i++) {
+        if (strcmp(first_word, shell_commands[i]) == 0) {
+            return 0;  // Known shell command
+        }
+    }
+    
+    return 0;  // Default to not AI query
+}
+
 void execute_command_securely(const char* cmd) {
     // Check if any children are ready
     int backend_ready = (state.backend_pid > 0 && is_process_running(state.backend_pid) && state.ai_status == AI_READY);
@@ -1995,6 +2057,15 @@ void execute_command_securely(const char* cmd) {
         if (result != 0 && state.verbose >= 1) {
             printf("Command failed (exit %d)\n", result);
         }
+        return;
+    }
+    
+    // Check if this looks like an AI query first
+    if (is_ai_query(cmd) && backend_ready && middleware_ready) {
+        if (state.verbose >= 2) {
+            printf("🤖 AI query detected: %s\n", cmd);
+        }
+        send_to_middleware(cmd);
         return;
     }
     
