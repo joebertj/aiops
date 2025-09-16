@@ -675,9 +675,9 @@ void handle_ai_mode_detection(const char* input) {
 }
 
 void load_config() {
-    // Read ~/.aweshrc for configuration
+    // Read ~/.awesh_config.ini for configuration
     char config_path[512];
-    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", getenv("HOME"));
+    snprintf(config_path, sizeof(config_path), "%s/.awesh_config.ini", getenv("HOME"));
     
     FILE *file = fopen(config_path, "r");
     if (!file) return;  // No config file, use defaults
@@ -1352,6 +1352,10 @@ void handle_interactive_bash(const char* cmd) {
 int is_simple_command(const char* cmd) {
     if (!cmd || strlen(cmd) == 0) return 0;
     
+    if (state.verbose >= 2) {
+        printf("🔍 Checking if simple command: '%s'\n", cmd);
+    }
+    
     // Simple commands that don't need complex error handling
     const char* simple_commands[] = {
         "ls", "pwd", "whoami", "date", "uptime", "free", "df", "ps", "top", "htop",
@@ -1366,11 +1370,17 @@ int is_simple_command(const char* cmd) {
         if (strncmp(cmd, simple_commands[i], cmd_len) == 0) {
             // Check if it's exactly the command or followed by space/argument
             if (cmd[cmd_len] == '\0' || cmd[cmd_len] == ' ' || cmd[cmd_len] == '\t') {
+                if (state.verbose >= 2) {
+                    printf("✅ Found simple command: %s\n", simple_commands[i]);
+                }
                 return 1;
             }
         }
     }
     
+    if (state.verbose >= 2) {
+        printf("❌ Not a simple command\n");
+    }
     return 0;
 }
 
@@ -1462,7 +1472,14 @@ void cleanup_bash_sandbox(void) {
 
 int test_command_in_sandbox(const char* cmd) {
     if (!bash_sandbox.bash_ready) {
+        if (state.verbose >= 2) {
+            printf("❌ Bash sandbox not ready\n");
+        }
         return -1;
+    }
+    
+    if (state.verbose >= 2) {
+        printf("🏖️ Executing in sandbox: %s\n", cmd);
     }
     
     // Clear output buffer
@@ -1492,8 +1509,8 @@ int test_command_in_sandbox(const char* cmd) {
     int max_fd = (bash_sandbox.bash_stdout_fd > bash_sandbox.bash_stderr_fd) ? 
                  bash_sandbox.bash_stdout_fd : bash_sandbox.bash_stderr_fd;
     
-    timeout.tv_sec = 0;   // No timeout for instant testing
-    timeout.tv_usec = 100000; // 100ms max wait
+             timeout.tv_sec = 5;   // 5 second timeout for command execution
+             timeout.tv_usec = 0;  // No microsecond timeout
     
     int result = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
     
@@ -1601,15 +1618,37 @@ void send_to_middleware(const char* cmd) {
 }
 
 void execute_command_securely(const char* cmd) {
-    // Frontend: Run ALL commands through bash sandbox first
+    // For simple commands, use direct execution (no sandbox, no thinking dots)
+    if (is_simple_command(cmd)) {
+        if (state.verbose >= 2) {
+            printf("🚀 Direct execution: %s\n", cmd);
+        }
+        // Direct execution for simple commands - fastest approach, no thinking dots
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command exited with code: %d\n", result);
+        }
+        return;
+    }
+    
+    // For complex commands, run through bash sandbox first
+    if (state.verbose >= 2) {
+        printf("🏖️ Testing command in sandbox: %s\n", cmd);
+    }
     int sandbox_result = test_command_in_sandbox(cmd);
     
     if (sandbox_result == 0) {
         // Command succeeded with output - display to user and return prompt
+        if (state.verbose >= 2) {
+            printf("✅ Sandbox success with output\n");
+        }
         printf("%s", bash_sandbox.output_buffer);
         return;
     } else if (sandbox_result == 1) {
         // Command succeeded with no output - just return prompt
+        if (state.verbose >= 2) {
+            printf("✅ Sandbox success with no output\n");
+        }
         return;
     } else {
         // Command failed (return value ≠ 0 OR stderr not empty) - send to middleware
@@ -1928,11 +1967,20 @@ int main() {
         
         // Handle command - priority order: aweX commands, then direct bash commands, then AI
         if (is_awesh_command(line)) {
+            if (state.verbose >= 2) {
+                printf("🎛️ AweX command: %s\n", line);
+            }
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
+            if (state.verbose >= 2) {
+                printf("🔧 Builtin command: %s\n", line);
+            }
             // Built-in commands (cd, pwd, exit) - highest priority after aweX
             handle_builtin(line);
         } else {
+            if (state.verbose >= 2) {
+                printf("🚀 Regular command: %s\n", line);
+            }
             // ALL commands go through bash sandbox first - no command identification
             execute_command_securely(line);
         }
