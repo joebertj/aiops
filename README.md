@@ -12,6 +12,67 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 
 **awesh** is the centerpiece of this toolkit - an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations.
 
+## ⚡ Quickstart - Get awesh Running Fast
+
+### 🚀 One-Command Installation
+```bash
+# Clone and install awesh in one go
+git clone https://github.com/joebertj/aiops.git
+cd aiops
+python3 deployment/deployment_mcp.py clean_install
+```
+
+### 🔑 Configure Your API Key
+```bash
+# Set your OpenAI API key
+export OPENAI_API_KEY=your_api_key_here
+export OPENAI_MODEL=gpt-5
+
+# Optional: Use OpenRouter instead
+export AI_PROVIDER=openrouter
+export OPENROUTER_API_KEY=your_openrouter_key_here
+export OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+```
+
+### 🎯 Start Using awesh
+```bash
+# Launch awesh
+awesh
+
+# Try these examples:
+> find all files that is recently edited
+> show me the system status
+> list all python processes
+> what's taking up disk space?
+```
+
+### 🛠️ Development Workflow
+```bash
+# Fast development cycle with Deployment MCP
+python3 deployment/deployment_mcp.py build_clean    # Build only
+python3 deployment/deployment_mcp.py deploy_only    # Deploy only
+python3 deployment/deployment_mcp.py clean_install  # Full cycle
+```
+
+### 🔧 Configuration
+```bash
+# Edit ~/.aweshrc for persistent settings
+VERBOSE=1                    # 0=silent, 1=info, 2=debug
+AI_PROVIDER=openai          # openai or openrouter
+MODEL=gpt-5                 # AI model to use
+```
+
+### 🎮 Control Commands
+```bash
+# Inside awesh
+aweh                        # Show help
+awes                        # Show status
+awev 1                      # Enable verbose mode
+awea openai                 # Switch AI provider
+```
+
+**That's it!** You now have AI-powered shell assistance with security middleware, intelligent command routing, and full bash compatibility.
+
 ## 📖 Related Reading
 
 **[AIOps: Artificial Intelligence for IT Operations](https://www.amazon.com/dp/B0FNKKXFPQ)** - A comprehensive guide to the AI revolution in IT operations, documenting real-world transformations and practical implementation strategies. Written by the creator of this toolkit, it provides the theoretical foundation and strategic insights behind these tools.

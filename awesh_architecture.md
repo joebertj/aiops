@@ -125,9 +125,9 @@ Security Features:
 
 ## Data Flow
 
-### 1. Command Processing Flow
+### 1. Command Processing Flow (Bidirectional Security Middleware)
 ```
-User Input → C Frontend → Command Routing Decision
+User Input → C Frontend → Security Middleware → Command Routing Decision
                                     │
                     ┌───────────────┼───────────────┐
                     │               │               │
@@ -135,24 +135,46 @@ User Input → C Frontend → Command Routing Decision
             Built-in Commands   Bash Commands   AI Processing
                     │               │               │
                     │               │               ▼
-                    │               │        Security Check
+                    │               │        AI Response
                     │               │               │
                     │               │               ▼
-                    │               │        Python Backend
+                    │               │        Security Middleware
                     │               │               │
                     │               │               ▼
-                    │               │        AI Provider
+                    │               │        awesh: Commands
                     │               │               │
                     │               │               ▼
-                    │               │        MCP Tools
+                    │               │        Command Execution
                     │               │               │
                     │               │               ▼
-                    │               │        Response
+                    │               │        Results Display
                     │               │               │
                     └───────────────┼───────────────┘
                                     │
                                     ▼
                             User Output
+```
+
+### 2. AI Response Modes (vi-inspired)
+```
+AI Response → Mode Detection
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+        ▼           ▼           ▼
+  Normal Mode   Command Mode   Display Mode
+  (default)     awesh: cmd    (text only)
+        │           │           │
+        │           ▼           │
+        │    Security Check     │
+        │           │           │
+        │           ▼           │
+        │    Command Execute    │
+        │           │           │
+        └───────────┼───────────┘
+                    │
+                    ▼
+              User Output
 ```
 
 ### 2. Security Monitoring Flow

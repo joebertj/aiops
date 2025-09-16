@@ -215,7 +215,7 @@ Respond with:
                 debug_log(f"File agent enhanced prompt with file context")
                 prompt = enhanced_prompt
             
-            # Give AI full context
+            # Give AI full context with vi terminology and explicit awesh: format instructions
             if bash_result:
                 ai_input = f"""User command: {prompt}
 Bash result:
@@ -223,17 +223,45 @@ Bash result:
 - Stdout: {bash_result.get('stdout', '')}
 - Stderr: {bash_result.get('stderr', '')}
 
-Process this and respond appropriately. If you provide commands for the user to run, format them as:
-awesh: <command>
+Process this and respond appropriately. You have two response modes (borrowed from vi editor):
 
-This allows the system to execute them automatically."""
+1. NORMAL MODE (default): Regular text response for information, explanations, or analysis
+   - Just provide your response as normal text
+   - This is like vi's normal mode - for reading and navigation
+
+2. COMMAND MODE: When you need to execute shell commands, use this format:
+   awesh: <command>
+   - This is like vi's command mode - for executing commands
+   - The command will be executed through security middleware
+
+Examples:
+- For file listing: awesh: ls -la
+- For finding files: awesh: find . -name "*.py" -mtime -1
+- For system info: awesh: ps aux | grep python
+- For editing files: awesh: vi filename.txt
+
+The awesh: prefix tells the system to execute the command through security middleware, just like : in vi executes commands."""
             else:
                 ai_input = f"""{prompt}
 
-If you provide commands for the user to run, format them as:
-awesh: <command>
+You have two response modes (borrowed from vi editor):
 
-This allows the system to execute them automatically."""
+1. NORMAL MODE (default): Regular text response for information, explanations, or analysis
+   - Just provide your response as normal text
+   - This is like vi's normal mode - for reading and navigation
+
+2. COMMAND MODE: When you need to execute shell commands, use this format:
+   awesh: <command>
+   - This is like vi's command mode - for executing commands
+   - The command will be executed through security middleware
+
+Examples:
+- For file listing: awesh: ls -la
+- For finding files: awesh: find . -name "*.py" -mtime -1
+- For system info: awesh: ps aux | grep python
+- For editing files: awesh: vi filename.txt
+
+The awesh: prefix tells the system to execute the command through security middleware, just like : in vi executes commands."""
             
             # Collect response with timeout (compatible with older Python)
             output = "🤖 "
@@ -325,14 +353,63 @@ This allows the system to execute them automatically."""
             command = command_stack.pop()
             debug_log(f"Trying command: {command}")
             
-            # Bash execution handled by C frontend - commands are executed there
-            # For now, assume command succeeded and return success message
-            debug_log(f"Command would be executed by C frontend: {command}")
-            return f"Command '{command}' would be executed by C frontend\n"
+            # Route command through security middleware for validation and execution
+            return await self._execute_command_through_security_middleware(command)
         
         # All commands failed, try to get alternatives from AI
         debug_log(f"All {len(failed_commands)} commands failed, requesting alternatives")
         return await self._request_command_alternatives(failed_commands)
+    
+    async def _execute_command_through_security_middleware(self, command: str) -> str:
+        """Execute AI-suggested command through security middleware"""
+        debug_log(f"Executing AI command through security middleware: {command}")
+        
+        try:
+            import subprocess
+            import tempfile
+            
+            # Create temporary file for output capture
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            try:
+                # Execute command in background and capture output
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    cwd=self.current_dir,
+                    timeout=30  # 30 second timeout for safety
+                )
+                
+                # Check if command was successful
+                if result.returncode == 0:
+                    # Command succeeded - return output
+                    output = result.stdout if result.stdout else "Command executed successfully"
+                    return f"✅ {output}"
+                else:
+                    # Command failed - return error
+                    error_output = result.stderr if result.stderr else result.stdout
+                    if not error_output:
+                        error_output = f"Command failed with exit code {result.returncode}"
+                    return f"❌ {error_output}"
+                    
+            except subprocess.TimeoutExpired:
+                return "❌ Command timed out (30s limit)"
+            except Exception as e:
+                return f"❌ Execution error: {str(e)}"
+            finally:
+                # Clean up temp file
+                try:
+                    import os
+                    os.unlink(temp_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            debug_log(f"_execute_command_through_security_middleware: Exception: {e}")
+            return f"❌ Backend error: {e}"
     
     async def _request_command_alternatives(self, failed_commands: list) -> str:
         """Request alternative commands from AI when all initial commands fail"""

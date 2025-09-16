@@ -566,7 +566,7 @@ int send_to_backend(const char* query, char* response, size_t response_size) {
 // Handle AI mode detection: Let AI decide command vs edit mode
 void handle_ai_mode_detection(const char* input) {
     if (state.ai_status != AI_READY) {
-        printf("🤖 AI not ready. Status: %s\n", 
+        printf("🤖⏳ AI not ready. Status: %s\n", 
                state.ai_status == AI_LOADING ? "Loading..." : "Failed");
         return;
     }
@@ -576,14 +576,16 @@ void handle_ai_mode_detection(const char* input) {
     if (send_to_backend(input, response, sizeof(response)) == 0) {
         // Parse AI response for mode detection
         if (strncmp(response, "awesh_cmd:", 10) == 0) {
-            // AI determined this is a command - extract and execute
+            // AI determined this is a command - extract and execute through security middleware
             char* command = response + 10;
             // Skip leading whitespace
             while (*command == ' ' || *command == '\t') command++;
             
-            printf("🔧 AI Command: %s\n", command);
-            // Execute the command
-            system(command);
+            if (state.verbose >= 1) {
+                printf("🔧 AI suggested command: %s\n", command);
+            }
+            // Execute the command through security middleware
+            handle_interactive_bash(command);
         } else if (strncmp(response, "awesh_edit:", 11) == 0) {
             // AI determined this is edit mode - just display
             char* edit_content = response + 11;
@@ -850,16 +852,16 @@ void check_ai_status() {
         }
         if (strncmp(response, "AI_READY", 8) == 0) {
             state.ai_status = AI_READY;
-            if (state.verbose >= 1) {
+            if (state.verbose >= 2) {
                 printf("🔧 AI status updated to READY\n");
             }
         } else if (strncmp(response, "AI_LOADING", 10) == 0) {
             state.ai_status = AI_LOADING;
-            if (state.verbose >= 1) {
+            if (state.verbose >= 2) {
                 printf("🔧 AI status updated to LOADING\n");
             }
         } else {
-            if (state.verbose >= 1) {
+            if (state.verbose >= 2) {
                 printf("🔧 Unknown status response: '%s'\n", response);
             }
         }
@@ -1295,7 +1297,7 @@ void execute_command_securely(const char* cmd) {
                     if (state.ai_status == AI_READY) {
                         handle_ai_mode_detection(cmd);
                     } else {
-                        printf("🤖 AI not ready. Please try again in a moment.\n");
+                        printf("🤖⏳ AI not ready. Please try again in a moment.\n");
                     }
                 } else {
                     // Show the actual bash error
