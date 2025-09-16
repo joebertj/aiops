@@ -21,6 +21,17 @@
 
 static char socket_path[512];
 
+// Remote prompt data structure
+typedef struct {
+    char username[64];
+    char hostname[64];
+    char cwd[256];
+    char git_branch[64];
+    char k8s_context[64];
+    char k8s_namespace[64];
+    int valid;
+} remote_prompt_data_t;
+
 // Security Agent socket communication
 static int security_agent_socket_fd = -1;
 static char security_agent_socket_path[512];
@@ -46,6 +57,10 @@ void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
+int is_ssh_session(void);
+int is_puppetmaster_mode(void);
+void handoff_to_remote_shell(void);
+remote_prompt_data_t get_remote_prompt_data(void);
 int is_ai_query(const char* cmd);
 int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
@@ -361,9 +376,9 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* s
     // Security agent health emoji - just check if socket exists (no blocking calls)
     if (security_agent_socket_fd >= 0) {
         strcpy(security_emoji, "🔒");  // Socket exists, assume responding
-    } else {
+        } else {
         strcpy(security_emoji, "⏳");  // Not started - uniform hourglass
-    }
+        }
     
     // Sandbox health emoji - just check if process exists (no blocking calls)
     if (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) {
@@ -1143,7 +1158,7 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
     
     // Cleanup Security Agent process
     if (state.security_agent_pid > 0) {
-        if (state.verbose >= 1) {
+    if (state.verbose >= 1) {
             printf("🔒 CLEANUP: Terminating Security Agent process (PID: %d)\n", state.security_agent_pid);
         }
         
@@ -1283,21 +1298,21 @@ int start_backend() {
     int max_retries = 10;  // 10 seconds total wait time
     
     while (retries < max_retries) {
-        sleep(1);
+    sleep(1);
         retries++;
-        
+    
         // Try to connect to backend socket
-        state.socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (state.socket_fd < 0) {
-            perror("Failed to create socket");
-            return -1;
-        }
-        
-        struct sockaddr_un addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-        
+    state.socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (state.socket_fd < 0) {
+        perror("Failed to create socket");
+        return -1;
+    }
+    
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+    
         if (connect(state.socket_fd, (struct sockaddr*)&addr, sizeof(addr)) >= 0) {
             // Connection successful
             if (state.verbose >= 1) {
@@ -1797,7 +1812,7 @@ int spawn_bash_sandbox(void) {
         }
         
         return 0;
-    } else {
+        } else {
         // Fork failed
         close(stdin_pipe[0]);
         close(stdin_pipe[1]);
@@ -1832,7 +1847,7 @@ void cleanup_bash_sandbox(void) {
         
         memset(&bash_sandbox, 0, sizeof(bash_sandbox));
         
-        if (state.verbose >= 1) {
+                    if (state.verbose >= 1) {
             printf("🏖️ Bash sandbox cleaned up\n");
         }
     }
@@ -1887,16 +1902,69 @@ int test_command_in_sandbox(const char* cmd) {
             return -2;  // Special return code for interactive commands
         }
         
-        // Command succeeded - check if there's output
-        if (strlen(response) > 0) {
-            // Store output in bash_sandbox.output_buffer for compatibility
-            strncpy(bash_sandbox.output_buffer, response, sizeof(bash_sandbox.output_buffer) - 1);
-            bash_sandbox.output_buffer[sizeof(bash_sandbox.output_buffer) - 1] = '\0';
-            bash_sandbox.output_length = strlen(response);
-            return 0;  // Success with output
-        } else {
-            return 1;  // Success with no output
+        // Parse sandbox response format: EXIT_CODE:X\nSTDOUT:...\nSTDERR:...\n
+        int exit_code = 0;
+        char* stdout_start = NULL;
+        char* stderr_start = NULL;
+        
+        // Parse EXIT_CODE
+        char* exit_line = strstr(response, "EXIT_CODE:");
+        if (exit_line) {
+            exit_code = atoi(exit_line + 10);
         }
+        
+        // Parse STDOUT
+        char* stdout_line = strstr(response, "STDOUT:");
+        if (stdout_line) {
+            stdout_start = stdout_line + 7;  // Skip "STDOUT:"
+        }
+        
+        // Parse STDERR
+        char* stderr_line = strstr(response, "STDERR:");
+        if (stderr_line) {
+            stderr_start = stderr_line + 7;  // Skip "STDERR:"
+        }
+        
+        // Extract stdout content (until STDERR or end)
+        char stdout_content[4096] = {0};
+        if (stdout_start) {
+            char* stdout_end = stderr_line ? stderr_line : (response + strlen(response));
+            size_t stdout_len = stdout_end - stdout_start;
+            if (stdout_len > 0 && stdout_len < sizeof(stdout_content)) {
+                strncpy(stdout_content, stdout_start, stdout_len);
+                stdout_content[stdout_len] = '\0';
+            }
+        }
+        
+        // Extract stderr content
+        char stderr_content[4096] = {0};
+        if (stderr_start) {
+            size_t stderr_len = strlen(stderr_start);
+            if (stderr_len > 0 && stderr_len < sizeof(stderr_content)) {
+                strncpy(stderr_content, stderr_start, stderr_len);
+                stderr_content[stderr_len] = '\0';
+            }
+        }
+        
+        // Show verbose output only if verbose level is high enough
+        if (state.verbose >= 2) {
+            printf("EXIT_CODE:%d\nSTDOUT:%sSTDERR:%s", exit_code, stdout_content, stderr_content);
+        } else {
+            // Show only the actual command output
+            if (strlen(stdout_content) > 0) {
+                printf("%s", stdout_content);
+            }
+            if (strlen(stderr_content) > 0 && state.verbose >= 1) {
+                printf("%s", stderr_content);
+            }
+        }
+        
+        // Store output in bash_sandbox.output_buffer for compatibility
+        strncpy(bash_sandbox.output_buffer, stdout_content, sizeof(bash_sandbox.output_buffer) - 1);
+        bash_sandbox.output_buffer[sizeof(bash_sandbox.output_buffer) - 1] = '\0';
+        bash_sandbox.output_length = strlen(stdout_content);
+        
+        return (exit_code == 0) ? 0 : -1;  // Success if exit code is 0
     } else {
         if (state.verbose >= 2) {
             printf("❌ Sandbox command failed\n");
@@ -1953,32 +2021,163 @@ void send_to_middleware(const char* cmd) {
             if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
                 // Middleware approved - pass to backend
                 char* approved_cmd = response + 14;
-                if (state.ai_status == AI_READY) {
+                    if (state.ai_status == AI_READY) {
                     // Send to backend through middleware (middleware intercepts response)
                     send_to_backend_through_middleware(approved_cmd);
-                } else {
-                    printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-                }
+                    } else {
+                        printf("🤖⏳ AI not ready. Please try again in a moment.\n");
+                    }
             } else if (strncmp(response, "SECURITY_FAIL:", 14) == 0) {
                 // Middleware blocked the command
                 char* reason = response + 14;
                 printf("🚫 Command blocked: %s\n", reason);
-            } else {
+                } else {
                 // Unknown response - show as-is
                 printf("%s", response);
             }
         } else {
             // Middleware communication failed - block backend-bound commands
-            if (state.verbose >= 1) {
+                    if (state.verbose >= 1) {
                 printf("🚫 Middleware unavailable - backend request blocked for security\n");
-            }
-        }
-    } else {
+                    }
+                }
+            } else {
         // No middleware connection - block backend-bound commands
-        if (state.verbose >= 1) {
+                if (state.verbose >= 1) {
             printf("🚫 No middleware connection - backend request blocked for security\n");
         }
     }
+}
+
+// Check if we're in an SSH session
+int is_ssh_session(void) {
+    return (getenv("SSH_CLIENT") != NULL || 
+            getenv("SSH_TTY") != NULL || 
+            getenv("SSH_CONNECTION") != NULL);
+}
+
+// Check if PUPPETMASTER mode is enabled
+int is_puppetmaster_mode(void) {
+    // Check environment variable first
+    char* puppetmaster_env = getenv("PUPPETMASTER");
+    if (puppetmaster_env && strcmp(puppetmaster_env, "1") == 0) {
+        return 1;
+    }
+    
+    // Check ~/.aweshrc file
+    char* home = getenv("HOME");
+    if (!home) return 0;
+    
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", home);
+    
+    FILE* config_file = fopen(config_path, "r");
+    if (!config_file) return 0;
+    
+    char line[256];
+    while (fgets(line, sizeof(line), config_file)) {
+        // Remove newline
+        line[strcspn(line, "\n")] = '\0';
+        
+        // Skip comments and empty lines
+        if (line[0] == '#' || line[0] == '\0') continue;
+        
+        // Check for PUPPETMASTER=1
+        if (strncmp(line, "PUPPETMASTER=1", 14) == 0) {
+            fclose(config_file);
+            return 1;
+        }
+    }
+    
+    fclose(config_file);
+    return 0;
+}
+
+// Hand off to remote shell when SSH detected (Option 2)
+void handoff_to_remote_shell(void) {
+    if (state.verbose >= 1) {
+        printf("🌐 SSH session detected - handing off to remote shell\n");
+    }
+    
+    // Set up remote environment
+    setenv("AWESH_REMOTE_MODE", "1", 1);
+    
+    // Start remote shell with proper PTY
+    execl("/bin/bash", "bash", NULL);
+    
+    // If execl fails, fall back to system
+    system("exec bash");
+    exit(0);
+}
+
+// Get remote prompt data via command execution (Option 3)
+remote_prompt_data_t get_remote_prompt_data(void) {
+    remote_prompt_data_t data = {0};
+    
+    // Get username
+    char* username = getenv("USER");
+    if (username) {
+        strncpy(data.username, username, sizeof(data.username) - 1);
+    }
+    
+    // Get hostname via command
+    FILE* hostname_cmd = popen("hostname", "r");
+    if (hostname_cmd) {
+        if (fgets(data.hostname, sizeof(data.hostname), hostname_cmd)) {
+            data.hostname[strcspn(data.hostname, "\n")] = '\0';
+        }
+        pclose(hostname_cmd);
+    }
+    
+    // Get current working directory via command
+    FILE* pwd_cmd = popen("pwd", "r");
+    if (pwd_cmd) {
+        if (fgets(data.cwd, sizeof(data.cwd), pwd_cmd)) {
+            data.cwd[strcspn(data.cwd, "\n")] = '\0';
+            
+            // Replace home directory with ~
+            char* home = getenv("HOME");
+            if (home && strncmp(data.cwd, home, strlen(home)) == 0) {
+                char temp[256];
+                snprintf(temp, sizeof(temp), "~%s", data.cwd + strlen(home));
+                strcpy(data.cwd, temp);
+            }
+        }
+        pclose(pwd_cmd);
+    }
+    
+    // Get git branch via command
+    FILE* git_cmd = popen("git branch --show-current 2>/dev/null", "r");
+    if (git_cmd) {
+        if (fgets(data.git_branch, sizeof(data.git_branch), git_cmd)) {
+            data.git_branch[strcspn(data.git_branch, "\n")] = '\0';
+        }
+        pclose(git_cmd);
+    }
+    
+    // Get kubernetes context via command
+    FILE* k8s_cmd = popen("kubectl config current-context 2>/dev/null", "r");
+    if (k8s_cmd) {
+        if (fgets(data.k8s_context, sizeof(data.k8s_context), k8s_cmd)) {
+            data.k8s_context[strcspn(data.k8s_context, "\n")] = '\0';
+        }
+        pclose(k8s_cmd);
+    }
+    
+    // Get kubernetes namespace via command
+    FILE* k8s_ns_cmd = popen("kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null", "r");
+    if (k8s_ns_cmd) {
+        if (fgets(data.k8s_namespace, sizeof(data.k8s_namespace), k8s_ns_cmd)) {
+            data.k8s_namespace[strcspn(data.k8s_namespace, "\n")] = '\0';
+            if (strlen(data.k8s_namespace) == 0) {
+                strcpy(data.k8s_namespace, "default");
+            }
+        }
+        pclose(k8s_ns_cmd);
+    }
+    
+    data.valid = 1;
+    return data;
 }
 
 // Check if command looks like an AI query (natural language)
@@ -2094,8 +2293,8 @@ void execute_command_securely(const char* cmd) {
                     printf("⚠️ Backend/middleware not ready - running command directly\n");
                 }
             }
-            int result = system(cmd);
-            if (result != 0 && state.verbose >= 1) {
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
                 printf("Command failed (exit %d)\n", result);
             }
         }
@@ -2257,31 +2456,77 @@ int main() {
         }
     }
     
+    // Check for SSH session and handle based on PUPPETMASTER mode
+    if (is_ssh_session()) {
+        if (is_puppetmaster_mode()) {
+            if (state.verbose >= 1) {
+                printf("🎭 PUPPETMASTER mode enabled - maintaining awesh prompt on remote\n");
+            }
+        } else {
+            handoff_to_remote_shell();
+        }
+    }
+    
     // Main shell loop - start immediately, don't wait for backend
     char* line;
     char prompt[1024];  // Increased size for full path and long context
     
     while (1) {
-        // Get username and hostname for prompt
-        char* username = getenv("USER");
+        char* username;
+        char hostname[64];
+        char cwd[256];
+        char git_branch[64] = "";
+        char k8s_context[64] = "";
+        char k8s_namespace[64] = "";
+        
+        // Check if we're in SSH session with PUPPETMASTER mode
+        if (is_ssh_session() && is_puppetmaster_mode()) {
+            // Get remote prompt data
+            remote_prompt_data_t remote_data = get_remote_prompt_data();
+            
+            if (remote_data.valid) {
+                username = remote_data.username;
+                strcpy(hostname, remote_data.hostname);
+                strcpy(cwd, remote_data.cwd);
+                strcpy(git_branch, remote_data.git_branch);
+                strcpy(k8s_context, remote_data.k8s_context);
+                strcpy(k8s_namespace, remote_data.k8s_namespace);
+            } else {
+                // Fallback to local data if remote data unavailable
+                username = getenv("USER");
+                if (!username) username = "user";
+                if (gethostname(hostname, sizeof(hostname)) != 0) {
+                    strcpy(hostname, "localhost");
+                }
+                if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                    strcpy(cwd, "~");
+                } else {
+                    char* home = getenv("HOME");
+                    if (home && strncmp(cwd, home, strlen(home)) == 0) {
+                        char temp[256];
+                        snprintf(temp, sizeof(temp), "~%s", cwd + strlen(home));
+                        strcpy(cwd, temp);
+                    }
+                }
+            }
+        } else {
+            // Use local data (normal mode)
+            username = getenv("USER");
         if (!username) username = "user";
         
-        char hostname[64];
         if (gethostname(hostname, sizeof(hostname)) != 0) {
             strcpy(hostname, "localhost");
         }
         
-        // Get current working directory
-        char cwd[256];
         if (getcwd(cwd, sizeof(cwd)) == NULL) {
             strcpy(cwd, "~");
         } else {
-            // Replace home directory with ~
             char* home = getenv("HOME");
             if (home && strncmp(cwd, home, strlen(home)) == 0) {
                 char temp[256];
                 snprintf(temp, sizeof(temp), "~%s", cwd + strlen(home));
                 strcpy(cwd, temp);
+                }
             }
         }
         
@@ -2291,12 +2536,10 @@ int main() {
         // Build secure dynamic prompt directly in C (no external file dependencies)
         long prompt_start = get_time_ms();
         
-        char git_branch[64] = "";
-        char k8s_context[64] = "";
-        char k8s_namespace[64] = "";
-        
-        // Get prompt data with caching optimization
+        // Get prompt data with caching optimization (only for local mode)
+        if (!is_ssh_session() || !is_puppetmaster_mode()) {
         get_prompt_data_cached(git_branch, k8s_context, k8s_namespace, 64);
+        }
         
         // Build context parts string with emojis (clean format)
         char context_parts[256] = "";
