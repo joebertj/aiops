@@ -131,6 +131,9 @@ awesh embraces the **minimalistic yet powerful** approach that operations profes
 
 **For the shell/vi professional** who wants AI assistance without abandoning the minimalistic, powerful tools that make operations efficient.
 
+**🎯 Ideal Test Users:**
+A 23-year terminal veteran is the perfect test user for writing an AI-enhanced terminal - not developers who spent time in advanced IDEs pampered by so much GUI tooling. Experienced terminal users understand the real workflow, know what's actually needed, and can identify when AI assistance genuinely enhances rather than complicates the shell experience.
+
 **🌟 Core Philosophy:**
 - **Zero-Friction AI**: No special syntax - just type naturally
 - **Intelligent Routing**: Automatically detects AI vs Bash intent
