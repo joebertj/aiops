@@ -25,6 +25,10 @@ static char socket_path[512];
 static int security_agent_socket_fd = -1;
 static char security_agent_socket_path[512];
 
+// Frontend socket server for middleware communication
+static int frontend_socket_fd = -1;
+static char frontend_socket_path[512];
+
 // Sandbox socket communication
 static int sandbox_socket_fd = -1;
 static char sandbox_socket_path[512];
@@ -61,6 +65,11 @@ void send_verbose_to_security_agent(int verbose_level);
 int init_sandbox_socket(void);
 void cleanup_sandbox_socket(void);
 int send_to_sandbox(const char* cmd, char* response, size_t response_size);
+
+// Frontend socket server functions
+int init_frontend_socket(void);
+void cleanup_frontend_socket(void);
+void handle_frontend_connections(void);
 
 // SECURE: In-memory cache for prompt data (eliminates popen() attack surface)
 static struct {
@@ -853,6 +862,108 @@ int send_to_sandbox(const char* cmd, char* response, size_t response_size) {
     return -1;  // Timeout or error
 }
 
+// Initialize frontend socket server
+int init_frontend_socket(void) {
+    // Initialize Frontend socket path
+    const char* home = getenv("HOME");
+    if (!home) return -1;
+
+    snprintf(frontend_socket_path, sizeof(frontend_socket_path),
+             "%s/.awesh_frontend.sock", home);
+    
+    // Remove old socket if it exists
+    unlink(frontend_socket_path);
+    
+    // Create socket
+    frontend_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (frontend_socket_fd < 0) {
+        return -1;
+    }
+    
+    // Bind socket
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, frontend_socket_path, sizeof(addr.sun_path) - 1);
+    
+    if (bind(frontend_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        close(frontend_socket_fd);
+        return -1;
+    }
+    
+    // Listen for connections
+    if (listen(frontend_socket_fd, 5) < 0) {
+        close(frontend_socket_fd);
+        return -1;
+    }
+    
+    return 0;
+}
+
+// Cleanup frontend socket
+void cleanup_frontend_socket(void) {
+    if (frontend_socket_fd != -1) {
+        close(frontend_socket_fd);
+        frontend_socket_fd = -1;
+    }
+    unlink(frontend_socket_path);
+}
+
+// Handle incoming connections from middleware
+void handle_frontend_connections(void) {
+    if (frontend_socket_fd < 0) return;
+    
+    // Check for incoming connections with non-blocking select
+    fd_set readfds;
+    struct timeval timeout;
+    
+    FD_ZERO(&readfds);
+    FD_SET(frontend_socket_fd, &readfds);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 1000; // 1ms timeout
+    
+    if (select(frontend_socket_fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
+        // Accept connection
+        int client_fd = accept(frontend_socket_fd, NULL, NULL);
+        if (client_fd >= 0) {
+            // Read message from middleware
+            char message[1024];
+            ssize_t bytes = recv(client_fd, message, sizeof(message) - 1, 0);
+            if (bytes > 0) {
+                message[bytes] = '\0';
+                
+                // Handle different message types from middleware
+                if (strncmp(message, "STATUS_UPDATE:", 14) == 0) {
+                    // Security agent status update
+                    char* status = message + 14;
+                    if (state.verbose >= 2) {
+                        printf("🔒 Security Agent Status: %s\n", status);
+                    }
+                } else if (strncmp(message, "SECURITY_ALERT:", 15) == 0) {
+                    // Security alert from middleware
+                    char* alert = message + 15;
+                    printf("🚨 SECURITY ALERT: %s\n", alert);
+                } else if (strncmp(message, "VERBOSE_UPDATE:", 15) == 0) {
+                    // Verbose level update from middleware
+                    char* level_str = message + 15;
+                    int new_level = atoi(level_str);
+                    if (new_level != state.verbose) {
+                        state.verbose = new_level;
+                        if (state.verbose >= 1) {
+                            printf("🔧 Verbose level updated to %d by middleware\n", state.verbose);
+                        }
+                    }
+                } else if (strncmp(message, "THREAT_DETECTED:", 16) == 0) {
+                    // Threat detection notification
+                    char* threat = message + 16;
+                    printf("🚨 THREAT DETECTED: %s\n", threat);
+                }
+            }
+            close(client_fd);
+        }
+    }
+}
+
 // Handle AI mode detection: Let AI decide command vs edit mode
 void handle_ai_mode_detection(const char* input) {
     if (state.ai_status != AI_READY) {
@@ -1095,6 +1206,12 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
     // Cleanup Sandbox socket
     cleanup_sandbox_socket();
     
+    // Cleanup Frontend socket
+    if (state.verbose >= 1) {
+        printf("🔌 CLEANUP: Closing frontend socket server\n");
+    }
+    cleanup_frontend_socket();
+    
     // Cleanup bash sandbox (legacy)
     if (state.verbose >= 1) {
         printf("🏖️ CLEANUP: Terminating legacy bash sandbox\n");
@@ -1106,6 +1223,9 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
         printf("🧹 CLEANUP: Removing socket files\n");
     }
     unlink(socket_path);
+    unlink(security_agent_socket_path);
+    unlink(sandbox_socket_path);
+    unlink(frontend_socket_path);
     
     // Cleanup any remaining child processes
     if (state.verbose >= 2) {
@@ -1971,6 +2091,11 @@ int main() {
         printf("⚠️ Warning: Could not initialize Sandbox socket\n");
     }
     
+    // Initialize Frontend socket server
+    if (init_frontend_socket() != 0) {
+        printf("⚠️ Warning: Could not initialize Frontend socket server\n");
+    }
+    
     // Start Sandbox as separate process (non-blocking)
     pid_t sandbox_pid = fork();
     if (sandbox_pid == 0) {
@@ -2181,6 +2306,9 @@ int main() {
                 }
             }
         }
+        
+        // Handle incoming connections from middleware (non-blocking)
+        handle_frontend_connections();
         
         // Get input with readline (supports history, editing)
         line = readline(prompt);

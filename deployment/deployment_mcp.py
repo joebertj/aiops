@@ -270,6 +270,7 @@ def kill_processes(force=False):
         socket_paths = [
             Path.home() / ".awesh.sock",
             Path.home() / ".awesh_security_agent.sock",
+            Path.home() / ".awesh_frontend.sock",
             Path("/tmp/awesh.sock"),
             Path("/tmp/awesh_sandbox.sock")
         ]
