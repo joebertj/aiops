@@ -40,6 +40,7 @@ int is_simple_command(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
 int test_command_in_sandbox(const char* cmd);
+void send_to_middleware(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
@@ -1480,8 +1481,8 @@ int test_command_in_sandbox(const char* cmd) {
     fd_set readfds;
     struct timeval timeout;
     char buffer[1024];
-    int has_output = 0;
-    int has_error = 0;
+    int has_stdout = 0;
+    int has_stderr = 0;
     
     // Set up select for reading
     FD_ZERO(&readfds);
@@ -1505,7 +1506,7 @@ int test_command_in_sandbox(const char* cmd) {
                 if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
                     memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
                     bash_sandbox.output_length += bytes_read;
-                    has_output = 1;
+                    has_stdout = 1;
                 }
             }
         }
@@ -1515,11 +1516,11 @@ int test_command_in_sandbox(const char* cmd) {
             ssize_t bytes_read = read(bash_sandbox.bash_stderr_fd, buffer, sizeof(buffer) - 1);
             if (bytes_read > 0) {
                 buffer[bytes_read] = '\0';
-                // Store error in output buffer for analysis
+                // Store stderr in output buffer
                 if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
                     memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
                     bash_sandbox.output_length += bytes_read;
-                    has_error = 1;
+                    has_stderr = 1;
                 }
             }
         }
@@ -1528,28 +1529,79 @@ int test_command_in_sandbox(const char* cmd) {
     // Null-terminate the output
     bash_sandbox.output_buffer[bash_sandbox.output_length] = '\0';
     
-    // Return status: 0 = success with output, 1 = success no output, -1 = error
-    if (has_error) {
-        return -1;  // Command failed (stderr output)
-    } else if (has_output) {
-        return 0;   // Command succeeded with output
+    // Return status based on stderr and stdout:
+    // -1 = stderr not empty (send to AI)
+    // 0 = stdout with output (display to user)
+    // 1 = no output (return prompt)
+    if (has_stderr) {
+        return -1;  // stderr not empty - send to AI
+    } else if (has_stdout) {
+        return 0;   // stdout with output - display to user
     } else {
-        return 1;   // Command succeeded with no output
+        return 1;   // no output - return prompt
+    }
+}
+
+void send_to_middleware(const char* cmd) {
+    // Middleware: Intercept commands between frontend and backend
+    if (security_agent_socket_fd >= 0) {
+        // Send command to security middleware for validation
+        char security_request[MAX_CMD_LEN + 50];
+        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
+        
+        if (state.verbose >= 2) {
+            printf("🔒 Middleware: validating command: %s\n", cmd);
+        }
+        
+        // Send to security middleware
+        char response[MAX_RESPONSE_LEN];
+        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
+            // Parse response from middleware
+            if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
+                // Middleware approved - pass to backend
+                char* approved_cmd = response + 14;
+                if (state.verbose >= 2) {
+                    printf("✅ Middleware: command approved, passing to backend...\n");
+                }
+                if (state.ai_status == AI_READY) {
+                    handle_ai_mode_detection(approved_cmd);
+                } else {
+                    printf("🤖⏳ AI not ready. Please try again in a moment.\n");
+                }
+            } else if (strncmp(response, "SECURITY_FAIL:", 14) == 0) {
+                // Middleware blocked the command
+                char* reason = response + 14;
+                printf("🚫 Command blocked: %s\n", reason);
+            } else {
+                // Unknown response - show as-is
+                printf("%s", response);
+            }
+        } else {
+            // Middleware communication failed - fallback to direct backend
+            if (state.verbose >= 1) {
+                printf("⚠️ Middleware unavailable, sending directly to backend...\n");
+            }
+            if (state.ai_status == AI_READY) {
+                handle_ai_mode_detection(cmd);
+            } else {
+                printf("🤖⏳ AI not ready. Please try again in a moment.\n");
+            }
+        }
+    } else {
+        // No middleware connection - send directly to backend
+        if (state.verbose >= 1) {
+            printf("⚠️ No middleware connection, sending directly to backend...\n");
+        }
+        if (state.ai_status == AI_READY) {
+            handle_ai_mode_detection(cmd);
+        } else {
+            printf("🤖⏳ AI not ready. Please try again in a moment.\n");
+        }
     }
 }
 
 void execute_command_securely(const char* cmd) {
-    // For obvious bash commands, use direct execution (no sandbox delay)
-    if (is_simple_command(cmd)) {
-        // Direct execution for simple commands - fastest approach
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command exited with code: %d\n", result);
-        }
-        return;
-    }
-    
-    // For complex commands, test in bash sandbox first
+    // Frontend: Run ALL commands through bash sandbox first
     int sandbox_result = test_command_in_sandbox(cmd);
     
     if (sandbox_result == 0) {
@@ -1560,24 +1612,11 @@ void execute_command_securely(const char* cmd) {
         // Command succeeded with no output - just return prompt
         return;
     } else {
-        // Command failed in sandbox - check if it's a natural language query
-        if (is_ambiguous_bash_command(cmd)) {
-            // Likely a natural language query - route to AI (intercepted by middleware)
-            if (state.verbose >= 1) {
-                printf("🔧 Sandbox detected natural language query, routing to AI...\n");
-            }
-            if (state.ai_status == AI_READY) {
-                handle_ai_mode_detection(cmd);
-            } else {
-                printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-            }
-        } else {
-            // Show the bash error
-            printf("%s", bash_sandbox.output_buffer);
-            if (state.verbose >= 1) {
-                printf("Command failed in sandbox\n");
-            }
+        // Command failed (return value ≠ 0 OR stderr not empty) - send to middleware
+        if (state.verbose >= 1) {
+            printf("🔧 Command failed in sandbox, sending to middleware...\n");
         }
+        send_to_middleware(cmd);
     }
 }
 
@@ -1885,7 +1924,7 @@ int main() {
         add_history(line);
         
         // AI-driven mode detection: Let AI decide command vs edit mode
-        char* mode = parse_ai_mode(line);
+        // No longer need to parse AI mode - all commands go through sandbox
         
         // Handle command - priority order: aweX commands, then direct bash commands, then AI
         if (is_awesh_command(line)) {
@@ -1893,18 +1932,9 @@ int main() {
         } else if (is_builtin(line)) {
             // Built-in commands (cd, pwd, exit) - highest priority after aweX
             handle_builtin(line);
-        } else if (is_shell_syntax_command(line)) {
-            // Commands with shell syntax (like "find . -name *.py") - through security middleware
-            handle_interactive_bash(line);
-        } else if (is_interactive_bash_command(line)) {
-            // Direct bash commands (ls, cat, grep, etc.) - high priority, no AI, no security middleware
-            execute_command_securely(line);
-        } else if (strcmp(mode, "ai_detect") == 0) {
-            // Natural language queries - send to AI for processing
-            handle_ai_mode_detection(line);
         } else {
-            // Fallback: Try bash first, send to AI only on failure
-            handle_bash_with_ai_fallback(line);
+            // ALL commands go through bash sandbox first - no command identification
+            execute_command_securely(line);
         }
         
         free(line);
