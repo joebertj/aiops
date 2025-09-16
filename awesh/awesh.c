@@ -343,7 +343,7 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* s
     if (state.backend_pid > 0 && is_process_running(state.backend_pid)) {
         switch (state.ai_status) {
             case AI_LOADING:
-                strcpy(backend_emoji, "🤖");  // Loading
+                strcpy(backend_emoji, "⏳");  // Loading - uniform hourglass
                 break;
             case AI_READY:
                 strcpy(backend_emoji, "🧠");  // Ready
@@ -353,21 +353,21 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* s
                 break;
         }
     } else {
-        strcpy(backend_emoji, "🚫");  // Not running (different from security)
+        strcpy(backend_emoji, "⏳");  // Not running - uniform hourglass
     }
     
     // Security agent health emoji - just check if socket exists (no blocking calls)
     if (security_agent_socket_fd >= 0) {
         strcpy(security_emoji, "🔒");  // Socket exists, assume responding
     } else {
-        strcpy(security_emoji, "⛔");  // Not started
+        strcpy(security_emoji, "⏳");  // Not started - uniform hourglass
     }
     
     // Sandbox health emoji - just check if process exists (no blocking calls)
     if (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) {
         strcpy(sandbox_emoji, "🏖️");  // Process exists, assume responding
     } else {
-        strcpy(sandbox_emoji, "⛔");  // Not started
+        strcpy(sandbox_emoji, "⏳");  // Not started - uniform hourglass
     }
 }
 
@@ -1837,91 +1837,34 @@ void cleanup_bash_sandbox(void) {
 }
 
 int test_command_in_sandbox(const char* cmd) {
-    if (!bash_sandbox.bash_ready) {
+    // Check if sandbox process is running
+    if (state.sandbox_pid <= 0 || !is_process_running(state.sandbox_pid)) {
         if (state.verbose >= 2) {
-            printf("❌ Bash sandbox not ready\n");
+            printf("❌ Sandbox process not running\n");
         }
         return -1;
     }
     
-    if (state.verbose >= 2) {
-        printf("🏖️ Executing in sandbox: %s\n", cmd);
-    }
+    // Use the new socket-based sandbox communication
+    char response[4096];
+    int result = send_to_sandbox(cmd, response, sizeof(response));
     
-    // Clear output buffer
-    memset(bash_sandbox.output_buffer, 0, sizeof(bash_sandbox.output_buffer));
-    bash_sandbox.output_length = 0;
-    
-    // Send command to bash sandbox
-    char full_cmd[1024];
-    snprintf(full_cmd, sizeof(full_cmd), "%s\n", cmd);
-    
-    if (write(bash_sandbox.bash_stdin_fd, full_cmd, strlen(full_cmd)) < 0) {
-        return -1;
-    }
-    
-    // Read output with minimal timeout for instant testing
-    fd_set readfds;
-    struct timeval timeout;
-    char buffer[1024];
-    int has_stdout = 0;
-    int has_stderr = 0;
-    
-    // Set up select for reading
-    FD_ZERO(&readfds);
-    FD_SET(bash_sandbox.bash_stdout_fd, &readfds);
-    FD_SET(bash_sandbox.bash_stderr_fd, &readfds);
-    
-    int max_fd = (bash_sandbox.bash_stdout_fd > bash_sandbox.bash_stderr_fd) ? 
-                 bash_sandbox.bash_stdout_fd : bash_sandbox.bash_stderr_fd;
-    
-             timeout.tv_sec = 5;   // 5 second timeout for command execution
-             timeout.tv_usec = 0;  // No microsecond timeout
-    
-    int result = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
-    
-    if (result > 0) {
-        // Read from stdout
-        if (FD_ISSET(bash_sandbox.bash_stdout_fd, &readfds)) {
-            ssize_t bytes_read = read(bash_sandbox.bash_stdout_fd, buffer, sizeof(buffer) - 1);
-            if (bytes_read > 0) {
-                buffer[bytes_read] = '\0';
-                if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
-                    memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
-                    bash_sandbox.output_length += bytes_read;
-                    has_stdout = 1;
-                }
-            }
+    if (result == 0) {
+        // Command succeeded - check if there's output
+        if (strlen(response) > 0) {
+            // Store output in bash_sandbox.output_buffer for compatibility
+            strncpy(bash_sandbox.output_buffer, response, sizeof(bash_sandbox.output_buffer) - 1);
+            bash_sandbox.output_buffer[sizeof(bash_sandbox.output_buffer) - 1] = '\0';
+            bash_sandbox.output_length = strlen(response);
+            return 0;  // Success with output
+        } else {
+            return 1;  // Success with no output
         }
-        
-        // Read from stderr
-        if (FD_ISSET(bash_sandbox.bash_stderr_fd, &readfds)) {
-            ssize_t bytes_read = read(bash_sandbox.bash_stderr_fd, buffer, sizeof(buffer) - 1);
-            if (bytes_read > 0) {
-                buffer[bytes_read] = '\0';
-                // Store stderr in output buffer
-                if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
-                    memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
-                    bash_sandbox.output_length += bytes_read;
-                    has_stderr = 1;
-                }
-            }
-        }
-    }
-    
-    // Null-terminate the output
-    bash_sandbox.output_buffer[bash_sandbox.output_length] = '\0';
-    
-    // Return status based on stderr and stdout:
-    // -1 = stderr not empty (send to AI)
-    // 0 = stdout with output (display to user)
-    // 1 = no output (return prompt)
-    if (has_stderr) {
-        return -1;  // stderr not empty - send to AI
-    } else if (has_stdout) {
-        return 0;   // stdout with output - display to user
     } else {
-        return 1;   // no output - return prompt
+        if (state.verbose >= 2) {
+            printf("❌ Sandbox command failed\n");
+        }
+        return -1;  // Command failed
     }
 }
 
@@ -2297,8 +2240,8 @@ int main() {
         }
         
         // Generate secure prompt with integrated security status (security comes right after user@host)
-        snprintf(prompt, sizeof(prompt), "%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s\n> ",
-                 backend_emoji, security_emoji, user_color, username, hostname, cwd, security_context, context_parts);
+        snprintf(prompt, sizeof(prompt), "%s:%s:%s:%s%s\033[0m@\033[36m%s\033[0m:\033[34m%s\033[0m%s%s\n> ",
+                 backend_emoji, security_emoji, sandbox_emoji, user_color, username, hostname, cwd, security_context, context_parts);
         
         // Debug total prompt generation time
         debug_perf("total prompt generation", prompt_start);
