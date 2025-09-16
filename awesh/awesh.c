@@ -1105,7 +1105,7 @@ int is_interactive_bash_command(const char* cmd) {
         "python3", "node", "irb", "bash", "sh", "zsh", "sudo",
         // Common file operations
         "cat", "ls", "pwd", "cd", "mkdir", "rmdir", "rm", "cp", "mv", "chmod", "chown",
-        "grep", "find", "which", "whereis", "locate", "head", "tail", "sort", "uniq",
+        "grep", "which", "whereis", "locate", "head", "tail", "sort", "uniq",
         "wc", "cut", "awk", "sed", "tr", "diff", "cmp", "file", "stat", "touch",
         // System info
         "ps", "kill", "killall", "jobs", "bg", "fg", "nohup", "screen", "tmux",
@@ -1131,6 +1131,25 @@ int is_interactive_bash_command(const char* cmd) {
     // Check if first word is interactive
     for (size_t i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
         if (strcmp(first_word, interactive_commands[i]) == 0) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+int is_shell_syntax_command(const char* cmd) {
+    if (!cmd || strlen(cmd) == 0) return 0;
+    
+    // Check for shell syntax patterns that indicate actual shell commands
+    const char* shell_patterns[] = {
+        "find ", "find\t", "find.", "find/", "find-", "find*", "find?", "find[", "find$", "find(",
+        "find=", "find>", "find<", "find|", "find&", "find;", "find&&", "find||"
+    };
+    
+    // Check if command starts with shell syntax patterns
+    for (size_t i = 0; i < sizeof(shell_patterns) / sizeof(shell_patterns[0]); i++) {
+        if (strncmp(cmd, shell_patterns[i], strlen(shell_patterns[i])) == 0) {
             return 1;
         }
     }
@@ -1459,7 +1478,11 @@ int main() {
             handle_awesh_command(line);
         } else if (is_builtin(line)) {
             handle_builtin(line);
+        } else if (is_shell_syntax_command(line)) {
+            // Commands with shell syntax (like "find . -name *.py") go to bash
+            handle_interactive_bash(line);
         } else if (is_interactive_bash_command(line)) {
+            // Other interactive commands go to bash
             handle_interactive_bash(line);
         } else if (strcmp(mode, "ai_detect") == 0) {
             // AI mode detection: Send to backend for AI to decide
