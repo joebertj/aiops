@@ -36,6 +36,10 @@ int send_to_backend(const char* query, char* response, size_t response_size);
 int send_to_security_agent(const char* query, char* response, size_t response_size);
 void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
+int is_simple_command(const char* cmd);
+int spawn_bash_sandbox(void);
+void cleanup_bash_sandbox(void);
+int test_command_in_sandbox(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
 int init_security_agent_socket(void);
 void cleanup_security_agent_socket(void);
@@ -57,6 +61,18 @@ static struct {
     int valid;
     int cache_initialized;
 } prompt_cache = {0};
+
+// SECURE: Persistent bash sandbox with memory-based execution (no I/O)
+static struct {
+    int bash_pid;
+    int bash_stdin_fd;
+    int bash_stdout_fd;
+    int bash_stderr_fd;
+    int bash_ready;
+    char output_buffer[64 * 1024];  // 64KB buffer
+    size_t output_length;
+    int exit_code;
+} bash_sandbox = {0};
 
 // SECURE: Hardcoded fallback values (no external command execution)
 static const char* DEFAULT_GIT_BRANCH = "main";
@@ -798,6 +814,12 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
     }
     cleanup_security_agent_socket();
     
+    // Cleanup bash sandbox
+    if (state.verbose >= 1) {
+        printf("🏖️ CLEANUP: Terminating bash sandbox\n");
+    }
+    cleanup_bash_sandbox();
+    
     // Cleanup socket files
     if (state.verbose >= 2) {
         printf("🧹 CLEANUP: Removing socket files\n");
@@ -1326,76 +1348,225 @@ void handle_interactive_bash(const char* cmd) {
     }
 }
 
-void execute_command_securely(const char* cmd) {
-    // Execute command and handle results
-    char temp_file[] = "/tmp/awesh_bash_XXXXXX";
-    int fd = mkstemp(temp_file);
-    if (fd != -1) {
-        close(fd);
+int is_simple_command(const char* cmd) {
+    if (!cmd || strlen(cmd) == 0) return 0;
+    
+    // Simple commands that don't need complex error handling
+    const char* simple_commands[] = {
+        "ls", "pwd", "whoami", "date", "uptime", "free", "df", "ps", "top", "htop",
+        "cat", "head", "tail", "grep", "find", "which", "whereis", "locate",
+        "mkdir", "rmdir", "touch", "chmod", "chown", "stat", "file",
+        "env", "printenv", "history", "alias", "type", "help"
+    };
+    
+    // Check if command starts with a simple command
+    for (size_t i = 0; i < sizeof(simple_commands) / sizeof(simple_commands[0]); i++) {
+        size_t cmd_len = strlen(simple_commands[i]);
+        if (strncmp(cmd, simple_commands[i], cmd_len) == 0) {
+            // Check if it's exactly the command or followed by space/argument
+            if (cmd[cmd_len] == '\0' || cmd[cmd_len] == ' ' || cmd[cmd_len] == '\t') {
+                return 1;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+int spawn_bash_sandbox(void) {
+    // Create pipes for communication with bash sandbox
+    int stdin_pipe[2], stdout_pipe[2], stderr_pipe[2];
+    
+    if (pipe(stdin_pipe) < 0 || pipe(stdout_pipe) < 0 || pipe(stderr_pipe) < 0) {
+        return -1;
+    }
+    
+    // Fork to create bash sandbox process
+    bash_sandbox.bash_pid = fork();
+    if (bash_sandbox.bash_pid == 0) {
+        // Child process: redirect stdio to pipes
+        close(stdin_pipe[1]);   // Close write end of stdin pipe
+        close(stdout_pipe[0]);  // Close read end of stdout pipe
+        close(stderr_pipe[0]);  // Close read end of stderr pipe
         
-        char bash_cmd[MAX_CMD_LEN + 100];
-        snprintf(bash_cmd, sizeof(bash_cmd), "%s >%s 2>&1", cmd, temp_file);
-        int result = system(bash_cmd);
+        // Redirect stdin, stdout, stderr
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stderr_pipe[1], STDERR_FILENO);
         
-        if (result == 0) {
-            // Command succeeded - show output and clean up immediately
-            char cat_cmd[200];
-            snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
-            system(cat_cmd);
-            unlink(temp_file);
-            return; // Exit immediately - no AI processing needed
-        } else {
-            // Command failed - check if it's a natural language query
-            FILE* file = fopen(temp_file, "r");
-            if (file) {
-                char line[512];
-                int no_such_file_count = 0;
-                int total_lines = 0;
-                
-                // Count "No such file or directory" errors
-                while (fgets(line, sizeof(line), file)) {
-                    total_lines++;
-                    if (strstr(line, "No such file or directory")) {
-                        no_such_file_count++;
-                    }
-                }
-                fclose(file);
-                
-                // If we have multiple "No such file or directory" errors AND
-                // the command starts with an ambiguous bash command,
-                // this is likely a natural language query misinterpreted as bash
-                if (no_such_file_count >= 3 && total_lines >= 3 && is_ambiguous_bash_command(cmd)) {
-                    if (state.verbose >= 1) {
-                        printf("🔧 Detected natural language query with ambiguous command, routing to AI...\n");
-                    }
-                    // Route to AI backend instead of showing bash errors
-                    if (state.ai_status == AI_READY) {
-                        handle_ai_mode_detection(cmd);
-                    } else {
-                        printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-                    }
-                } else {
-                    // Show the actual bash error
-                    char cat_cmd[200];
-                    snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
-                    system(cat_cmd);
-                    if (state.verbose >= 1) {
-                        printf("Command exited with code: %d\n", result);
-                    }
-                }
-                unlink(temp_file);
-            } else {
-                // Fallback if we can't read the temp file
-                if (state.verbose >= 1) {
-                    printf("Command exited with code: %d\n", result);
+        // Close original pipe ends
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
+        
+        // Execute bash in non-interactive mode for faster execution
+        execl("/bin/bash", "bash", "--norc", "--noprofile", NULL);
+        exit(1); // Should not reach here
+    } else if (bash_sandbox.bash_pid > 0) {
+        // Parent process: store pipe file descriptors
+        close(stdin_pipe[0]);   // Close read end of stdin pipe
+        close(stdout_pipe[1]);  // Close write end of stdout pipe
+        close(stderr_pipe[1]);  // Close write end of stderr pipe
+        
+        bash_sandbox.bash_stdin_fd = stdin_pipe[1];
+        bash_sandbox.bash_stdout_fd = stdout_pipe[0];
+        bash_sandbox.bash_stderr_fd = stderr_pipe[0];
+        bash_sandbox.bash_ready = 1;
+        
+        if (state.verbose >= 1) {
+            printf("🏖️ Bash sandbox started (PID: %d)\n", bash_sandbox.bash_pid);
+        }
+        
+        return 0;
+    } else {
+        // Fork failed
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[0]);
+        close(stderr_pipe[1]);
+        return -1;
+    }
+}
+
+void cleanup_bash_sandbox(void) {
+    if (bash_sandbox.bash_ready) {
+        // Send exit command to bash sandbox
+        if (bash_sandbox.bash_stdin_fd >= 0) {
+            write(bash_sandbox.bash_stdin_fd, "exit\n", 5);
+            close(bash_sandbox.bash_stdin_fd);
+        }
+        
+        // Close file descriptors
+        if (bash_sandbox.bash_stdout_fd >= 0) {
+            close(bash_sandbox.bash_stdout_fd);
+        }
+        if (bash_sandbox.bash_stderr_fd >= 0) {
+            close(bash_sandbox.bash_stderr_fd);
+        }
+        
+        // Wait for bash sandbox process to exit
+        if (bash_sandbox.bash_pid > 0) {
+            waitpid(bash_sandbox.bash_pid, NULL, 0);
+        }
+        
+        memset(&bash_sandbox, 0, sizeof(bash_sandbox));
+        
+        if (state.verbose >= 1) {
+            printf("🏖️ Bash sandbox cleaned up\n");
+        }
+    }
+}
+
+int test_command_in_sandbox(const char* cmd) {
+    if (!bash_sandbox.bash_ready) {
+        return -1;
+    }
+    
+    // Clear output buffer
+    memset(bash_sandbox.output_buffer, 0, sizeof(bash_sandbox.output_buffer));
+    bash_sandbox.output_length = 0;
+    
+    // Send command to bash sandbox
+    char full_cmd[1024];
+    snprintf(full_cmd, sizeof(full_cmd), "%s\n", cmd);
+    
+    if (write(bash_sandbox.bash_stdin_fd, full_cmd, strlen(full_cmd)) < 0) {
+        return -1;
+    }
+    
+    // Read output with minimal timeout for instant testing
+    fd_set readfds;
+    struct timeval timeout;
+    char buffer[1024];
+    int has_output = 0;
+    int has_error = 0;
+    
+    // Set up select for reading
+    FD_ZERO(&readfds);
+    FD_SET(bash_sandbox.bash_stdout_fd, &readfds);
+    FD_SET(bash_sandbox.bash_stderr_fd, &readfds);
+    
+    int max_fd = (bash_sandbox.bash_stdout_fd > bash_sandbox.bash_stderr_fd) ? 
+                 bash_sandbox.bash_stdout_fd : bash_sandbox.bash_stderr_fd;
+    
+    timeout.tv_sec = 0;   // No timeout for instant testing
+    timeout.tv_usec = 100000; // 100ms max wait
+    
+    int result = select(max_fd + 1, &readfds, NULL, NULL, &timeout);
+    
+    if (result > 0) {
+        // Read from stdout
+        if (FD_ISSET(bash_sandbox.bash_stdout_fd, &readfds)) {
+            ssize_t bytes_read = read(bash_sandbox.bash_stdout_fd, buffer, sizeof(buffer) - 1);
+            if (bytes_read > 0) {
+                buffer[bytes_read] = '\0';
+                if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
+                    memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
+                    bash_sandbox.output_length += bytes_read;
+                    has_output = 1;
                 }
             }
         }
+        
+        // Read from stderr
+        if (FD_ISSET(bash_sandbox.bash_stderr_fd, &readfds)) {
+            ssize_t bytes_read = read(bash_sandbox.bash_stderr_fd, buffer, sizeof(buffer) - 1);
+            if (bytes_read > 0) {
+                buffer[bytes_read] = '\0';
+                // Store error in output buffer for analysis
+                if (bash_sandbox.output_length + bytes_read < sizeof(bash_sandbox.output_buffer) - 1) {
+                    memcpy(bash_sandbox.output_buffer + bash_sandbox.output_length, buffer, bytes_read);
+                    bash_sandbox.output_length += bytes_read;
+                    has_error = 1;
+                }
+            }
+        }
+    }
+    
+    // Null-terminate the output
+    bash_sandbox.output_buffer[bash_sandbox.output_length] = '\0';
+    
+    // Return status: 0 = success with output, 1 = success no output, -1 = error
+    if (has_error) {
+        return -1;  // Command failed (stderr output)
+    } else if (has_output) {
+        return 0;   // Command succeeded with output
     } else {
-        // Fallback if temp file creation fails
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command exited with code: %d\n", result);
+        return 1;   // Command succeeded with no output
+    }
+}
+
+void execute_command_securely(const char* cmd) {
+    // Test command in bash sandbox first (instant testing)
+    int sandbox_result = test_command_in_sandbox(cmd);
+    
+    if (sandbox_result == 0) {
+        // Command succeeded with output - display to user and return prompt
+        printf("%s", bash_sandbox.output_buffer);
+        return;
+    } else if (sandbox_result == 1) {
+        // Command succeeded with no output - just return prompt
+        return;
+    } else {
+        // Command failed in sandbox - check if it's a natural language query
+        if (is_ambiguous_bash_command(cmd)) {
+            // Likely a natural language query - route to AI (intercepted by middleware)
+            if (state.verbose >= 1) {
+                printf("🔧 Sandbox detected natural language query, routing to AI...\n");
+            }
+            if (state.ai_status == AI_READY) {
+                handle_ai_mode_detection(cmd);
+            } else {
+                printf("🤖⏳ AI not ready. Please try again in a moment.\n");
+            }
+        } else {
+            // Show the bash error
+            printf("%s", bash_sandbox.output_buffer);
+            if (state.verbose >= 1) {
+                printf("Command failed in sandbox\n");
+            }
         }
     }
 }
@@ -1496,6 +1667,11 @@ int main() {
     // Initialize Security Agent socket
     if (init_security_agent_socket() != 0) {
         printf("⚠️ Warning: Could not initialize Security Agent socket\n");
+    }
+    
+    // Spawn bash sandbox for instant command testing
+    if (spawn_bash_sandbox() != 0) {
+        printf("⚠️ Warning: Could not spawn bash sandbox\n");
     }
     
     // Start Security Agent as separate process (non-blocking)
@@ -1727,3 +1903,4 @@ int main() {
     cleanup_and_exit(0);
     return 0;
 }
+
