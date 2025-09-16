@@ -1138,6 +1138,52 @@ int is_interactive_bash_command(const char* cmd) {
     return 0;
 }
 
+// Top bash commands that can also be natural language
+static const char* ambiguous_bash_commands[] = {
+    "find", "grep", "search", "list", "show", "display", "get", "check", "count", "sort",
+    "filter", "select", "choose", "pick", "extract", "remove", "delete", "clean", "clear",
+    "copy", "move", "rename", "change", "update", "modify", "edit", "create", "make", "build",
+    "install", "uninstall", "start", "stop", "restart", "run", "execute", "launch", "open", "close",
+    "read", "write", "save", "load", "import", "export", "backup", "restore", "sync", "merge",
+    "compare", "diff", "analyze", "scan", "monitor", "watch", "track", "log", "debug", "test",
+    "validate", "verify", "check", "inspect", "examine", "review", "audit", "report", "status",
+    "info", "details", "help", "explain", "describe", "summarize", "calculate", "compute", "process",
+    "convert", "transform", "format", "parse", "split", "join", "combine", "group", "organize",
+    "arrange", "order", "rank", "prioritize", "schedule", "plan", "design", "configure", "setup",
+    "initialize", "prepare", "ready", "enable", "disable", "activate", "deactivate", "toggle",
+    "switch", "change", "replace", "substitute", "swap", "exchange", "transfer", "send", "receive",
+    "download", "upload", "fetch", "pull", "push", "commit", "publish", "deploy", "release",
+    "version", "tag", "branch", "merge", "rebase", "clone", "fork", "fork", "stash", "pop",
+    "reset", "revert", "rollback", "undo", "redo", "repeat", "retry", "continue", "resume",
+    "pause", "suspend", "wait", "delay", "sleep", "wake", "notify", "alert", "warn", "error",
+    "fail", "success", "complete", "finish", "end", "exit", "quit", "abort", "cancel", "skip",
+    "ignore", "exclude", "include", "add", "append", "prepend", "insert", "remove", "delete",
+    "truncate", "cut", "slice", "chunk", "batch", "bulk", "mass", "batch", "queue", "stack",
+    "heap", "tree", "graph", "map", "reduce", "fold", "unfold", "expand", "compress", "zip",
+    "unzip", "archive", "extract", "pack", "unpack", "bundle", "unbundle", "package", "unpackage"
+};
+
+int is_ambiguous_bash_command(const char* cmd) {
+    if (!cmd || strlen(cmd) == 0) return 0;
+    
+    // Extract first word from command
+    char cmd_copy[MAX_CMD_LEN];
+    strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
+    cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+    
+    char* first_word = strtok(cmd_copy, " \t");
+    if (!first_word) return 0;
+    
+    // Check if first word is in ambiguous commands list
+    for (size_t i = 0; i < sizeof(ambiguous_bash_commands) / sizeof(ambiguous_bash_commands[0]); i++) {
+        if (strcmp(first_word, ambiguous_bash_commands[i]) == 0) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
 int is_shell_syntax_command(const char* cmd) {
     if (!cmd || strlen(cmd) == 0) return 0;
     
@@ -1158,9 +1204,122 @@ int is_shell_syntax_command(const char* cmd) {
 }
 
 void handle_interactive_bash(const char* cmd) {
-    int result = system(cmd);
-    if (result != 0 && state.verbose >= 1) {
-        printf("Command exited with code: %d\n", result);
+    // Route command through security agent middleware
+    if (state.socket_fd >= 0) {
+        // Send command to security agent middleware for validation
+        char security_request[MAX_CMD_LEN + 50];
+        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
+        
+        if (state.verbose >= 2) {
+            printf("🔒 Security middleware: validating command: %s\n", cmd);
+        }
+        
+        // Send to backend (which routes to security agent middleware)
+        char response[MAX_RESPONSE_LEN];
+        if (send_to_backend(security_request, response, sizeof(response)) == 0) {
+            // Parse response from security middleware
+            if (strncmp(response, "SECURITY_OK:", 12) == 0) {
+                // Security middleware approved - execute command
+                char* approved_cmd = response + 12;
+                if (state.verbose >= 2) {
+                    printf("✅ Security middleware: command approved, executing...\n");
+                }
+                execute_command_securely(approved_cmd);
+            } else if (strncmp(response, "SECURITY_BLOCKED:", 17) == 0) {
+                // Security middleware blocked the command
+                char* reason = response + 17;
+                printf("🚫 Security middleware blocked command: %s\n", reason);
+            } else {
+                // Unknown response - show as-is
+                printf("%s", response);
+            }
+        } else {
+            // Backend communication failed - fallback to direct execution
+            if (state.verbose >= 1) {
+                printf("⚠️ Security middleware unavailable, executing directly...\n");
+            }
+            execute_command_securely(cmd);
+        }
+    } else {
+        // No backend connection - fallback to direct execution
+        if (state.verbose >= 1) {
+            printf("⚠️ No backend connection, executing directly...\n");
+        }
+        execute_command_securely(cmd);
+    }
+}
+
+void execute_command_securely(const char* cmd) {
+    // Execute command and handle results
+    char temp_file[] = "/tmp/awesh_bash_XXXXXX";
+    int fd = mkstemp(temp_file);
+    if (fd != -1) {
+        close(fd);
+        
+        char bash_cmd[MAX_CMD_LEN + 100];
+        snprintf(bash_cmd, sizeof(bash_cmd), "%s >%s 2>&1", cmd, temp_file);
+        int result = system(bash_cmd);
+        
+        if (result == 0) {
+            // Command succeeded - show output and clean up immediately
+            char cat_cmd[200];
+            snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
+            system(cat_cmd);
+            unlink(temp_file);
+            return; // Exit immediately - no AI processing needed
+        } else {
+            // Command failed - check if it's a natural language query
+            FILE* file = fopen(temp_file, "r");
+            if (file) {
+                char line[512];
+                int no_such_file_count = 0;
+                int total_lines = 0;
+                
+                // Count "No such file or directory" errors
+                while (fgets(line, sizeof(line), file)) {
+                    total_lines++;
+                    if (strstr(line, "No such file or directory")) {
+                        no_such_file_count++;
+                    }
+                }
+                fclose(file);
+                
+                // If we have multiple "No such file or directory" errors AND
+                // the command starts with an ambiguous bash command,
+                // this is likely a natural language query misinterpreted as bash
+                if (no_such_file_count >= 3 && total_lines >= 3 && is_ambiguous_bash_command(cmd)) {
+                    if (state.verbose >= 1) {
+                        printf("🔧 Detected natural language query with ambiguous command, routing to AI...\n");
+                    }
+                    // Route to AI backend instead of showing bash errors
+                    if (state.ai_status == AI_READY) {
+                        handle_ai_mode_detection(cmd);
+                    } else {
+                        printf("🤖 AI not ready. Please try again in a moment.\n");
+                    }
+                } else {
+                    // Show the actual bash error
+                    char cat_cmd[200];
+                    snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
+                    system(cat_cmd);
+                    if (state.verbose >= 1) {
+                        printf("Command exited with code: %d\n", result);
+                    }
+                }
+                unlink(temp_file);
+            } else {
+                // Fallback if we can't read the temp file
+                if (state.verbose >= 1) {
+                    printf("Command exited with code: %d\n", result);
+                }
+            }
+        }
+    } else {
+        // Fallback if temp file creation fails
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command exited with code: %d\n", result);
+        }
     }
 }
 
@@ -1178,11 +1337,12 @@ void handle_bash_with_ai_fallback(const char* cmd) {
             int result = system(bash_cmd);
             
             if (result == 0) {
-                // Bash succeeded - show output and clean up
+                // Bash succeeded - show output and clean up immediately
                 char cat_cmd[200];
                 snprintf(cat_cmd, sizeof(cat_cmd), "cat %s", temp_file);
                 system(cat_cmd);
                 unlink(temp_file);
+                return; // Exit immediately - no AI processing needed
             } else {
                 // Bash failed - send command and output to AI as context
                 if (state.verbose >= 1) {
