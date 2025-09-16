@@ -349,16 +349,10 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji) {
     
     // Security agent health emoji - unique emojis for each state
     if (security_agent_socket_fd >= 0) {
-        // Quick socket test
-        fd_set readfds;
-        struct timeval timeout;
-        FD_ZERO(&readfds);
-        FD_SET(security_agent_socket_fd, &readfds);
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 1000; // 1ms timeout
-        
-        if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) >= 0) {
-            strcpy(security_emoji, "🔒");  // Running
+        // Test if security agent is actually responding by sending a test command
+        char test_response[64];
+        if (send_to_security_agent("STATUS", test_response, sizeof(test_response)) == 0) {
+            strcpy(security_emoji, "🔒");  // Running and responding
         } else {
             strcpy(security_emoji, "⚠️");  // Not responding (middleware unavailable)
         }
