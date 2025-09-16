@@ -1539,7 +1539,17 @@ int test_command_in_sandbox(const char* cmd) {
 }
 
 void execute_command_securely(const char* cmd) {
-    // Test command in bash sandbox first (instant testing)
+    // For obvious bash commands, use direct execution (no sandbox delay)
+    if (is_simple_command(cmd)) {
+        // Direct execution for simple commands - fastest approach
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("Command exited with code: %d\n", result);
+        }
+        return;
+    }
+    
+    // For complex commands, test in bash sandbox first
     int sandbox_result = test_command_in_sandbox(cmd);
     
     if (sandbox_result == 0) {
