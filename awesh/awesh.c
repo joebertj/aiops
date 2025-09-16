@@ -360,7 +360,7 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji) {
         if (select(security_agent_socket_fd + 1, &readfds, NULL, NULL, &timeout) >= 0) {
             strcpy(security_emoji, "🔒");  // Running
         } else {
-            strcpy(security_emoji, "🔓");  // Not responding (different from backend)
+            strcpy(security_emoji, "⚠️");  // Not responding (middleware unavailable)
         }
     } else {
         strcpy(security_emoji, "⛔");  // Not started (different from both)
@@ -1844,7 +1844,8 @@ void send_to_backend_through_middleware(const char* cmd) {
 }
 
 void send_to_middleware(const char* cmd) {
-    // Middleware: Intercept commands between frontend and backend
+    // Middleware: Only intercept commands going TO the backend
+    // Built-in commands (quit, exit) are handled by frontend, not backend
     if (security_agent_socket_fd >= 0) {
         // Send command to security middleware for validation
         char security_request[MAX_CMD_LEN + 50];
@@ -1872,12 +1873,12 @@ void send_to_middleware(const char* cmd) {
                 printf("%s", response);
             }
         } else {
-            // Middleware communication failed - no fallback to backend
-            printf("🚫 Middleware unavailable - command blocked for security\n");
+            // Middleware communication failed - block backend-bound commands
+            printf("🚫 Middleware unavailable - backend request blocked for security\n");
         }
     } else {
-        // No middleware connection - no fallback to backend
-        printf("🚫 No middleware connection - command blocked for security\n");
+        // No middleware connection - block backend-bound commands
+        printf("🚫 No middleware connection - backend request blocked for security\n");
     }
 }
 
@@ -2206,10 +2207,16 @@ int main() {
         // AI-driven mode detection: Let AI decide command vs edit mode
         // No longer need to parse AI mode - all commands go through sandbox
         
-        // Handle command - clean logic: aweX → sandbox → backend
+        // Handle command - clean logic: aweX → built-in → sandbox → backend
         if (is_awesh_command(line)) {
             // 2a - aweX commands
             handle_awesh_command(line);
+        } else if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
+            // Built-in commands - handled by frontend, not backend
+            if (state.verbose >= 1) {
+                printf("👋 Exiting awesh...\n");
+            }
+            cleanup_and_exit(0);
         } else {
             // 2b - sandbox: send to sandbox, get result, decide routing
             execute_command_securely(line);
