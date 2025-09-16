@@ -104,6 +104,9 @@ Open source thrives on experimentation and innovation. AI provides the base infr
 ### 🐚 **awesh** - AIWES (Awe-Inspired Workspace Environment Shell)
 *"AI by default, Bash when I mean Bash"*
 
+**💎 Naming Inspiration:**
+awesh draws its name from my eldest daughter, **Awit Perl** - where "Awit" means "Psalm" in Filipino, representing both "Awe" and "Wit," while "Perl" means "Pearl" (still more OG than the Python we have today). This shell embodies the same wonder and wisdom that inspired its creation.
+
 The flagship component of AIOps - an intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. **Built by Ops, for Ops** - designed for systems administrators, DevOps engineers, and infrastructure professionals who live in the terminal.
 
 **💡 The "Free Cursor" Concept:**
