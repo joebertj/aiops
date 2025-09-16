@@ -46,6 +46,7 @@ void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
+int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
 void send_to_middleware(const char* cmd);
 void send_to_backend_through_middleware(const char* cmd);
@@ -1836,7 +1837,34 @@ void cleanup_bash_sandbox(void) {
     }
 }
 
+// Check if command is interactive (needs TTY)
+int is_interactive_command(const char* cmd) {
+    // List of known interactive commands
+    const char* interactive_commands[] = {
+        "vi", "vim", "nano", "emacs", "top", "htop", "less", "more", "man",
+        "ssh", "telnet", "ftp", "sftp", "mysql", "psql", "sqlite3",
+        "python", "python3", "node", "nodejs", "irb", "rails console",
+        "gdb", "lldb", "strace", "ltrace", "tcpdump", "wireshark",
+        "screen", "tmux", "byobu", "mutt", "pine", "alpine",
+        NULL
+    };
+    
+    // Extract first word of command
+    char first_word[256];
+    sscanf(cmd, "%255s", first_word);
+    
+    // Check against interactive commands list
+    for (int i = 0; interactive_commands[i] != NULL; i++) {
+        if (strcmp(first_word, interactive_commands[i]) == 0) {
+            return 1;  // Interactive command
+        }
+    }
+    
+    return 0;  // Non-interactive command
+}
+
 int test_command_in_sandbox(const char* cmd) {
+    // Always test commands in sandbox first
     // Check if sandbox process is running
     if (state.sandbox_pid <= 0 || !is_process_running(state.sandbox_pid)) {
         if (state.verbose >= 2) {
@@ -1978,8 +2006,14 @@ void execute_command_securely(const char* cmd) {
             send_to_middleware(cmd);
         } else {
             // Backend or middleware not ready - run command directly as fallback
-            if (state.verbose >= 1) {
-                printf("⚠️ Backend/middleware not ready - running command directly\n");
+            if (is_interactive_command(cmd)) {
+                if (state.verbose >= 1) {
+                    printf("🖥️ Interactive command - running directly with TTY\n");
+                }
+            } else {
+                if (state.verbose >= 1) {
+                    printf("⚠️ Backend/middleware not ready - running command directly\n");
+                }
             }
             int result = system(cmd);
             if (result != 0 && state.verbose >= 1) {
