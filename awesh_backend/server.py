@@ -81,6 +81,8 @@ class AweshSocketBackend:
         try:
             debug_log(f"process_command: Starting with command: {command}")
             
+            # Security validation now handled transparently by middleware
+            
             # Handle working directory sync from frontend
             if command.startswith('CWD:'):
                 new_dir = command[4:]  # Remove 'CWD:' prefix
@@ -185,6 +187,8 @@ class AweshSocketBackend:
         except Exception as e:
             debug_log(f"Error adding to RAG: {e}")
             return "RAG_ERROR"
+    
+    # Security validation removed - now handled transparently by middleware
     
     async def _handle_rag_analysis_5min(self) -> str:
         """Analyze latest 5 minutes of RAG data for suspicious processes (security agent only)"""

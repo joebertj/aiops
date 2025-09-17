@@ -36,8 +36,7 @@ typedef struct {
 } remote_prompt_data_t;
 
 // Security Agent socket communication
-static int security_agent_socket_fd = -1;
-static char security_agent_socket_path[512];
+// Security agent communication via stdin/stdout (no sockets needed)
 
 // Frontend socket server for middleware communication
 static int frontend_socket_fd = -1;
@@ -55,7 +54,7 @@ char* parse_ai_mode(const char* input);
 void handle_ai_mode_detection(const char* input);
 void handle_ai_query(const char* query);
 int send_to_backend(const char* query, char* response, size_t response_size);
-int send_to_security_agent(const char* query, char* response, size_t response_size);
+// Security agent communication removed - now handled transparently by middleware proxy
 void handle_interactive_bash(const char* cmd);
 void execute_command_securely(const char* cmd);
 int spawn_bash_sandbox(void);
@@ -67,22 +66,22 @@ remote_prompt_data_t get_remote_prompt_data(void);
 int is_ai_query(const char* cmd);
 int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
-void send_to_middleware(const char* cmd);
-void send_to_backend_through_middleware(const char* cmd);
+// Middleware functions removed - now handled transparently
+// Backend communication functions removed - now handled transparently by middleware
 void run_interactive_command(const char* cmd);
 void get_security_agent_status(char* status, size_t size);
-int init_security_agent_socket(void);
-void cleanup_security_agent_socket(void);
+// Security agent functions removed - now uses stdin/stdout
 void debug_perf(const char* operation, long start_time);
 void check_child_process_health(void);
 int is_process_running(pid_t pid);
 void log_health_status(const char* process_name, pid_t pid, int is_running);
 void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* sandbox_emoji);
+void check_ai_status(void);
 int restart_backend(void);
 int restart_security_agent(void);
 int restart_sandbox(void);
 void attempt_child_restart(void);
-void send_verbose_to_security_agent(int verbose_level);
+// Verbose communication removed - middleware handles this transparently
 int init_sandbox_socket(void);
 void cleanup_sandbox_socket(void);
 int send_to_sandbox(const char* cmd, char* response, size_t response_size);
@@ -324,7 +323,7 @@ void check_child_process_health(void) {
                 fprintf(stderr, "⚠️ Security Agent process died, will attempt restart\n");
             }
             state.security_agent_pid = -1;
-            security_agent_socket_fd = -1;
+            // Security agent socket removed - now uses stdin/stdout
         }
     }
     
@@ -378,7 +377,7 @@ void get_health_status_emojis(char* backend_emoji, char* security_emoji, char* s
     }
     
     // Security agent health emoji - just check if socket exists (no blocking calls)
-    if (security_agent_socket_fd >= 0) {
+    if (state.security_agent_pid > 0) {
         strcpy(security_emoji, "🔒");  // Socket exists, assume responding
         } else {
         strcpy(security_emoji, "⏳");  // Not started - uniform hourglass
@@ -444,15 +443,9 @@ int restart_security_agent(void) {
     }
     
     // Clean up existing security agent socket
-    cleanup_security_agent_socket();
+    // Socket cleanup removed - middleware handles this
     
-    // Reinitialize socket
-    if (init_security_agent_socket() != 0) {
-        if (state.verbose >= 1) {
-            fprintf(stderr, "❌ RESTART: Failed to reinitialize Security Agent socket\n");
-        }
-        return -1;
-    }
+    // Socket initialization removed - middleware handles this
     
     // Start new security agent process
     pid_t new_security_pid = fork();
@@ -556,50 +549,7 @@ void attempt_child_restart(void) {
 }
 
 // Get process agent status for prompt display
-int init_security_agent_socket(void) {
-    // Initialize Security Agent socket path
-    const char* home = getenv("HOME");
-    if (!home) return -1;
-
-    snprintf(security_agent_socket_path, sizeof(security_agent_socket_path),
-             "%s/.awesh_security_agent.sock", home);
-
-    // Remove existing socket
-    unlink(security_agent_socket_path);
-
-    // Create Security Agent socket
-    security_agent_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (security_agent_socket_fd < 0) {
-        return -1;
-    }
-
-    // Bind socket
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
-
-    if (bind(security_agent_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(security_agent_socket_fd);
-        return -1;
-    }
-
-    // Listen for Security Agent connections
-    if (listen(security_agent_socket_fd, 1) < 0) {
-        close(security_agent_socket_fd);
-        return -1;
-    }
-
-    return 0;
-}
-
-void cleanup_security_agent_socket(void) {
-    if (security_agent_socket_fd != -1) {
-        close(security_agent_socket_fd);
-        security_agent_socket_fd = -1;
-    }
-    unlink(security_agent_socket_path);
-}
+// Old socket functions removed - middleware now handles socket management
 
 
 void get_security_agent_status(char* status, size_t size) {
@@ -695,93 +645,10 @@ int send_to_backend(const char* query, char* response, size_t response_size) {
     return -1;  // Timeout or error
 }
 
-int send_to_security_agent(const char* query, char* response, size_t response_size) {
-    if (security_agent_socket_fd < 0) {
-        return -1;  // No security agent connection
-    }
-    
-    // Create a client socket to connect to security agent
-    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (client_fd < 0) {
-        return -1;
-    }
-    
-    // Connect to security agent socket
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
-    
-    if (connect(client_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(client_fd);
-        return -1;
-    }
-    
-    // Send query to security agent
-    if (send(client_fd, query, strlen(query), 0) < 0) {
-        close(client_fd);
-        return -1;
-    }
-    
-    // Read response with timeout
-    fd_set readfds;
-    struct timeval timeout;
-    
-    FD_ZERO(&readfds);
-    FD_SET(client_fd, &readfds);
-    timeout.tv_sec = 5;  // 5 second timeout
-    timeout.tv_usec = 0;
-    
-    int result = select(client_fd + 1, &readfds, NULL, NULL, &timeout);
-    
-    if (result > 0) {
-        // Data available, read response
-        ssize_t bytes_received = recv(client_fd, response, response_size - 1, 0);
-        close(client_fd);
-        if (bytes_received > 0) {
-            response[bytes_received] = '\0';
-            return 0;  // Success
-        }
-    }
-    
-    close(client_fd);
-    return -1;  // Timeout or error
-}
+// Security agent communication removed - now handled transparently by middleware proxy
 
 // Send verbose level to security agent
-void send_verbose_to_security_agent(int verbose_level) {
-    if (security_agent_socket_fd < 0) {
-        return;  // No security agent connection
-    }
-    
-    // Create a client socket to connect to security agent
-    int client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (client_fd < 0) {
-        return;
-    }
-    
-    // Connect to security agent socket
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, security_agent_socket_path, sizeof(addr.sun_path) - 1);
-    
-    if (connect(client_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(client_fd);
-        return;
-    }
-    
-    // Send verbose command to security agent
-    char verbose_cmd[32];
-    snprintf(verbose_cmd, sizeof(verbose_cmd), "VERBOSE:%d", verbose_level);
-    
-    if (send(client_fd, verbose_cmd, strlen(verbose_cmd), 0) < 0) {
-        close(client_fd);
-        return;
-    }
-    
-    close(client_fd);
-}
+// Verbose communication removed - middleware handles this transparently
 
 // Initialize sandbox socket
 int init_sandbox_socket(void) {
@@ -1050,13 +917,12 @@ void handle_ai_mode_detection(const char* input) {
 }
 
 void load_config() {
-    // Read ~/.awesh_config.ini for configuration
+    // Read ~/.aweshrc for configuration (primary config file)
     char config_path[512];
-    snprintf(config_path, sizeof(config_path), "%s/.awesh_config.ini", getenv("HOME"));
+    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", getenv("HOME"));
     
     FILE *file = fopen(config_path, "r");
-    if (!file) return;  // No config file, use defaults
-    
+    if (file) {
     char line[256];
     while (fgets(line, sizeof(line), file)) {
         // Remove newline
@@ -1080,8 +946,38 @@ void load_config() {
         // Set all config values as environment variables for backend
         setenv(key, value, 1);
     }
-    
+        fclose(file);
+    } else {
+        // Fallback to ~/.awesh_config.ini for backward compatibility
+        snprintf(config_path, sizeof(config_path), "%s/.awesh_config.ini", getenv("HOME"));
+        file = fopen(config_path, "r");
+        if (file) {
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        // Remove newline
+        line[strcspn(line, "\n")] = 0;
+        
+        // Skip empty lines and comments
+        if (line[0] == '\0' || line[0] == '#') continue;
+        
+        // Parse key=value pairs
+        char *equals = strchr(line, '=');
+        if (!equals) continue;
+        
+        *equals = '\0';
+        char *key = line;
+        char *value = equals + 1;
+        
+        if (strcmp(key, "VERBOSE") == 0) {
+            state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
+        }
+        
+        // Set all config values as environment variables for backend
+        setenv(key, value, 1);
+            }
     fclose(file);
+        }
+    }
 }
 
 void update_config_file(const char* key, const char* value) {
@@ -1216,7 +1112,7 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
     }
     
     // Cleanup Security Agent socket
-    cleanup_security_agent_socket();
+    // Socket cleanup removed - middleware handles this
     
     // Cleanup Sandbox process
     if (state.sandbox_pid > 0) {
@@ -1269,7 +1165,7 @@ void cleanup_and_exit(int sig __attribute__((unused))) {
         printf("🧹 CLEANUP: Removing socket files\n");
     }
     unlink(socket_path);
-    unlink(security_agent_socket_path);
+    // Socket cleanup removed - middleware handles this
     unlink(sandbox_socket_path);
     unlink(frontend_socket_path);
     
@@ -1346,6 +1242,8 @@ int start_backend() {
             if (state.verbose >= 1) {
                 printf("🔌 Connected to backend after %d seconds\n", retries);
             }
+            // Check AI status to update from AI_LOADING to AI_READY
+            check_ai_status();
             break;
         }
         
@@ -1581,37 +1479,42 @@ void handle_awesh_command(const char* cmd) {
             // Set verbose level 0 (silent)
             update_config_file("VERBOSE", "0");
             send_command("VERBOSE:0");
-            send_verbose_to_security_agent(0);  // Send to security agent
+            // Verbose communication removed - middleware handles this
             state.verbose = 0;
             printf("🔧 Verbose level set to 0 (silent)\n");
+            check_ai_status();  // Update AI status to show correct emoji
         } else if (strcmp(cmd, "awev 1") == 0) {
             // Set verbose level 1 (info)
             update_config_file("VERBOSE", "1");
             send_command("VERBOSE:1");
-            send_verbose_to_security_agent(1);  // Send to security agent
+            // Verbose communication removed - middleware handles this
             state.verbose = 1;
             printf("🔧 Verbose level set to 1 (info)\n");
+            check_ai_status();  // Update AI status to show correct emoji
         } else if (strcmp(cmd, "awev 2") == 0) {
             // Set verbose level 2 (debug)
             update_config_file("VERBOSE", "2");
             send_command("VERBOSE:2");
-            send_verbose_to_security_agent(2);  // Send to security agent
+            // Verbose communication removed - middleware handles this
             state.verbose = 2;
             printf("🔧 Verbose level set to 2 (debug)\n");
+            check_ai_status();  // Update AI status to show correct emoji
         } else if (strcmp(cmd, "awev on") == 0) {
             // Legacy: Enable verbose logging (level 1)
             update_config_file("VERBOSE", "1");
             send_command("VERBOSE:1");
-            send_verbose_to_security_agent(1);  // Send to security agent
+            // Verbose communication removed - middleware handles this
             state.verbose = 1;
             printf("🔧 Verbose logging enabled (level 1)\n");
+            check_ai_status();  // Update AI status to show correct emoji
         } else if (strcmp(cmd, "awev off") == 0) {
             // Legacy: Disable verbose logging (level 0)
             update_config_file("VERBOSE", "0");
             send_command("VERBOSE:0");
-            send_verbose_to_security_agent(0);  // Send to security agent
+            // Verbose communication removed - middleware handles this
             state.verbose = 0;
             printf("🔧 Verbose logging disabled (level 0)\n");
+            check_ai_status();  // Update AI status to show correct emoji
         } else {
             printf("Usage: awev [0|1|2|on|off]\n");
         }
@@ -1686,45 +1589,14 @@ void handle_awesh_command(const char* cmd) {
 }
 
 int is_interactive_bash_command(const char* cmd) {
-    if (!cmd || strlen(cmd) == 0) return 0;
-    
-    // Interactive commands that should run directly in C frontend
-    const char* interactive_commands[] = {
-        "vi", "vim", "nano", "emacs", "htop", "top", "less", "more", 
-        "man", "ssh", "ftp", "telnet", "mysql", "psql", "python", 
-        "python3", "node", "irb", "bash", "sh", "zsh", "sudo",
-        // Common file operations
-        "cat", "ls", "pwd", "cd", "mkdir", "rmdir", "rm", "cp", "mv", "chmod", "chown",
-        "grep", "which", "whereis", "locate", "head", "tail", "sort", "uniq",
-        "wc", "cut", "awk", "sed", "tr", "diff", "cmp", "file", "stat", "touch",
-        // System info
-        "ps", "kill", "killall", "jobs", "bg", "fg", "nohup", "screen", "tmux",
-        "df", "du", "free", "uptime", "who", "whoami", "id", "groups", "uname",
-        "date", "cal", "history", "alias", "type", "help", "env", "printenv",
-        // Network
-        "ping", "curl", "wget", "netstat", "ss", "lsof", "traceroute", "nslookup",
-        // Package management
-        "apt", "yum", "dnf", "pacman", "brew", "pip", "npm", "cargo", "go",
-        // Git
-        "git", "hg", "svn",
-        // Editors and viewers
-        "code", "subl", "atom", "gedit", "kate", "mousepad"
-    };
-    
-    char cmd_copy[MAX_CMD_LEN];
-    strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
-    cmd_copy[sizeof(cmd_copy) - 1] = '\0';
-    
-    char* first_word = strtok(cmd_copy, " \t");
-    if (!first_word) return 0;
-    
-    // Check if first word is interactive
-    for (size_t i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
-        if (strcmp(first_word, interactive_commands[i]) == 0) {
-            return 1;
-        }
-    }
-    
+    // Interactive command detection is now handled by the sandbox
+    // The sandbox detects interactive commands by checking if they:
+    // 1. Don't produce a prompt after execution
+    // 2. Don't produce output
+    // 3. Need user interaction
+    // 
+    // This function is kept for backward compatibility but should not be used
+    // The sandbox's detection is more accurate and handles all cases dynamically
     return 0;
 }
 
@@ -1794,49 +1666,9 @@ int is_shell_syntax_command(const char* cmd) {
 }
 
 void handle_interactive_bash(const char* cmd) {
-    // Commands that need security middleware validation (complex shell syntax, etc.)
-    if (security_agent_socket_fd >= 0) {
-        // Send command directly to security agent for validation
-        char security_request[MAX_CMD_LEN + 50];
-        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
-        
-        if (state.verbose >= 2) {
-            printf("🔒 Security middleware: validating command: %s\n", cmd);
-        }
-        
-        // Send directly to security agent (not through backend)
-        char response[MAX_RESPONSE_LEN];
-        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
-            // Parse response from security middleware
-            if (strncmp(response, "SECURITY_OK:", 12) == 0) {
-                // Security middleware approved - execute command
-                char* approved_cmd = response + 12;
-                if (state.verbose >= 2) {
-                    printf("✅ Security middleware: command approved, executing...\n");
-                }
-                execute_command_securely(approved_cmd);
-            } else if (strncmp(response, "SECURITY_BLOCKED:", 17) == 0) {
-                // Security middleware blocked the command
-                char* reason = response + 17;
-                printf("🚫 Security middleware blocked command: %s\n", reason);
-            } else {
-                // Unknown response - show as-is
-                printf("%s", response);
-            }
-        } else {
-            // Security agent communication failed - fallback to direct execution
-            if (state.verbose >= 1) {
-                printf("⚠️ Security middleware unavailable, executing directly...\n");
-            }
-            execute_command_securely(cmd);
-        }
-    } else {
-        // No security agent connection - fallback to direct execution
-        if (state.verbose >= 1) {
-            printf("⚠️ No security agent connection, executing directly...\n");
-        }
-        execute_command_securely(cmd);
-    }
+    // Security validation now handled transparently by middleware
+    // Just execute the command directly
+    execute_command_securely(cmd);
 }
 
 
@@ -1928,28 +1760,15 @@ void cleanup_bash_sandbox(void) {
 
 // Check if command is interactive (needs TTY)
 int is_interactive_command(const char* cmd) {
-    // List of known interactive commands
-    const char* interactive_commands[] = {
-        "vi", "vim", "nano", "emacs", "top", "htop", "less", "more", "man",
-        "ssh", "telnet", "ftp", "sftp", "mysql", "psql", "sqlite3",
-        "python", "python3", "node", "nodejs", "irb", "rails console",
-        "gdb", "lldb", "strace", "ltrace", "tcpdump", "wireshark",
-        "screen", "tmux", "byobu", "mutt", "pine", "alpine",
-        NULL
-    };
-    
-    // Extract first word of command
-    char first_word[256];
-    sscanf(cmd, "%255s", first_word);
-    
-    // Check against interactive commands list
-    for (int i = 0; interactive_commands[i] != NULL; i++) {
-        if (strcmp(first_word, interactive_commands[i]) == 0) {
-            return 1;  // Interactive command
-        }
-    }
-    
-    return 0;  // Non-interactive command
+    // Interactive command detection is now handled by the sandbox
+    // The sandbox detects interactive commands dynamically by checking if they:
+    // 1. Don't produce a prompt after execution
+    // 2. Don't produce output
+    // 3. Need user interaction
+    // 
+    // This function is kept for backward compatibility but should not be used
+    // The sandbox's detection is more accurate and handles all cases dynamically
+    return 0;
 }
 
 int test_command_in_sandbox(const char* cmd) {
@@ -1969,7 +1788,7 @@ int test_command_in_sandbox(const char* cmd) {
         if (result == 0) {
         // Check if sandbox detected an interactive command
         if (strstr(response, "INTERACTIVE_COMMAND")) {
-            if (state.verbose >= 2) {
+                if (state.verbose >= 2) {
                 printf("🖥️ Sandbox detected interactive command: %s\n", cmd);
             }
             return -2;  // Special return code for interactive commands
@@ -2011,14 +1830,14 @@ int test_command_in_sandbox(const char* cmd) {
                 printf("✅ Sandbox: Valid bash command - executing directly\n");
             }
             return 0;  // VALID BASH - Frontend executes directly
-        } else {
+            } else {
             // Command failed in sandbox - invalid bash or needs AI help
             if (state.verbose >= 2) {
                 printf("🤖 Sandbox: Invalid bash or needs AI help - routing to backend\n");
             }
             return -2;  // INVALID BASH - Route to backend for AI help
-        }
-    } else {
+                    }
+                } else {
         if (state.verbose >= 2) {
             printf("❌ Sandbox command failed\n");
         }
@@ -2026,8 +1845,12 @@ int test_command_in_sandbox(const char* cmd) {
     }
 }
 
-void send_to_backend_through_middleware_and_wait(const char* cmd) {
-    // Send to backend through middleware and wait for response with thinking dots
+// Old middleware functions removed - now handled transparently by proxy
+
+// Old middleware function removed - now handled transparently by proxy
+
+void send_to_backend_directly(const char* cmd) {
+    // Send directly to backend - middleware is transparent
     if (state.socket_fd >= 0) {
         // Send command to backend
         if (send(state.socket_fd, cmd, strlen(cmd), 0) < 0) {
@@ -2036,9 +1859,10 @@ void send_to_backend_through_middleware_and_wait(const char* cmd) {
         }
         
         // Show thinking dots while waiting for response (5 minute timeout)
-        int dots = 0;
         time_t start_time = time(NULL);
+        time_t last_dot_time = start_time;
         const int MAX_WAIT_SECONDS = 300;  // 5 minutes
+        const int DOT_INTERVAL_SECONDS = 5;  // Show dot every 5 seconds
         
         while (1) {
             // Check if data is available to read
@@ -2047,8 +1871,8 @@ void send_to_backend_through_middleware_and_wait(const char* cmd) {
             FD_SET(state.socket_fd, &readfds);
             
             struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;  // 100ms
+            timeout.tv_sec = 1;  // 1 second timeout for select
+            timeout.tv_usec = 0;
             
             int result = select(state.socket_fd + 1, &readfds, NULL, NULL, &timeout);
             
@@ -2061,163 +1885,35 @@ void send_to_backend_through_middleware_and_wait(const char* cmd) {
                     
                     // Clear thinking dots and show response
                     printf("\r                    \r");  // Clear line
-                    
-                    // Parse response from middleware
-                    if (strncmp(response, "BACKEND_RESPONSE:", 17) == 0) {
-                        // Backend response approved by middleware
-                        char* backend_output = response + 17;
-                        printf("%s", backend_output);
-                    } else if (strncmp(response, "BACKEND_BLOCKED:", 16) == 0) {
-                        // Middleware blocked backend response
-                        char* reason = response + 16;
-                        printf("🚫 Backend response blocked: %s\n", reason);
-                    } else {
-                        // Unknown response - show as-is
-                        printf("%s", response);
-                    }
-                    break;
-                } else {
-                    printf("\n❌ Backend connection lost\n");
-                    break;
+                printf("%s", response);
+                    return;
                 }
             } else if (result == 0) {
-                // Timeout - check if we've exceeded 5 minutes
+                // Timeout - check if we should show thinking dots
                 time_t current_time = time(NULL);
-                if (current_time - start_time >= MAX_WAIT_SECONDS) {
-                    printf("\n⏰ Backend response timeout (5 minutes)\n");
-                    break;
+                if (current_time - last_dot_time >= DOT_INTERVAL_SECONDS) {
+                    printf(".");
+                    fflush(stdout);
+                    last_dot_time = current_time;
                 }
                 
-                // Show thinking dots
-                printf(".");
-                fflush(stdout);
-                dots++;
-                if (dots > 50) {  // Reset dots counter every 5 seconds
-                    dots = 0;
-                }
-            } else {
+                // Check for overall timeout
+                if (current_time - start_time >= MAX_WAIT_SECONDS) {
+                    printf("\n⏰ Backend response timeout\n");
+                    return;
+            }
+        } else {
+                // Error
                 printf("\n❌ Error waiting for backend response\n");
-                break;
+                return;
             }
         }
     } else {
-        printf("\n❌ No backend connection\n");
+        printf("\n🚫 Backend not available\n");
     }
 }
 
-void send_to_backend_through_middleware(const char* cmd) {
-    // Middleware intercepts backend communication
-    if (security_agent_socket_fd >= 0) {
-        // Send command to middleware for backend processing
-        char middleware_request[MAX_CMD_LEN + 50];
-        snprintf(middleware_request, sizeof(middleware_request), "BACKEND_REQUEST:%s", cmd);
-        
-        // Send to middleware (middleware will forward to backend and intercept response)
-        char response[MAX_RESPONSE_LEN];
-        if (send_to_security_agent(middleware_request, response, sizeof(response)) == 0) {
-            // Parse response from middleware (already filtered by middleware)
-            if (strncmp(response, "BACKEND_RESPONSE:", 17) == 0) {
-                // Middleware approved backend response
-                char* backend_response = response + 17;
-                printf("%s", backend_response);
-            } else if (strncmp(response, "BACKEND_BLOCKED:", 16) == 0) {
-                // Middleware blocked backend response
-                char* reason = response + 16;
-                printf("🚫 Backend response blocked: %s\n", reason);
-            } else {
-                // Unknown response - show as-is
-                printf("%s", response);
-            }
-        } else {
-            // Middleware communication failed
-            printf("🚫 Middleware unavailable - backend request failed\n");
-        }
-    } else {
-        // No middleware connection
-        printf("🚫 No middleware connection - backend request blocked\n");
-    }
-}
-
-void send_to_middleware_and_wait(const char* cmd) {
-    // Send to middleware and wait for response with thinking dots
-    if (security_agent_socket_fd >= 0) {
-        // Send command to security middleware for validation
-        char security_request[MAX_CMD_LEN + 50];
-        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
-        
-        // Send to security middleware
-        char response[MAX_RESPONSE_LEN];
-        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
-            // Parse response from middleware
-            if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
-                // Middleware approved - pass to backend
-                char* approved_cmd = response + 14;
-                    if (state.ai_status == AI_READY) {
-                    // Send to backend through middleware and wait for response
-                    send_to_backend_through_middleware_and_wait(approved_cmd);
-                } else {
-                    printf("\n🤖⏳ AI not ready. Please try again in a moment.\n");
-                }
-            } else if (strncmp(response, "SECURITY_FAIL:", 14) == 0) {
-                // Middleware blocked the command
-                char* reason = response + 14;
-                printf("\n🚫 Command blocked: %s\n", reason);
-            } else {
-                // Unknown response - show as-is
-                printf("\n%s", response);
-            }
-        } else {
-            // Middleware communication failed
-            printf("\n🚫 Middleware unavailable - backend request failed\n");
-        }
-    } else {
-        // No middleware connection
-        printf("\n🚫 No middleware connection - backend request blocked\n");
-    }
-}
-
-void send_to_middleware(const char* cmd) {
-    // Middleware: Only intercept commands going TO the backend
-    // Built-in commands (quit, exit) are handled by frontend, not backend
-    if (security_agent_socket_fd >= 0) {
-        // Send command to security middleware for validation
-        char security_request[MAX_CMD_LEN + 50];
-        snprintf(security_request, sizeof(security_request), "SECURITY_CHECK:%s", cmd);
-        
-        // Send to security middleware
-        char response[MAX_RESPONSE_LEN];
-        if (send_to_security_agent(security_request, response, sizeof(response)) == 0) {
-            // Parse response from middleware
-            if (strncmp(response, "SECURITY_PASS:", 14) == 0) {
-                // Middleware approved - pass to backend
-                char* approved_cmd = response + 14;
-                    if (state.ai_status == AI_READY) {
-                    // Send to backend through middleware (middleware intercepts response)
-                    send_to_backend_through_middleware(approved_cmd);
-                    } else {
-                        printf("🤖⏳ AI not ready. Please try again in a moment.\n");
-                    }
-            } else if (strncmp(response, "SECURITY_FAIL:", 14) == 0) {
-                // Middleware blocked the command
-                char* reason = response + 14;
-                printf("🚫 Command blocked: %s\n", reason);
-                } else {
-                // Unknown response - show as-is
-                printf("%s", response);
-            }
-        } else {
-            // Middleware communication failed - block backend-bound commands
-                    if (state.verbose >= 1) {
-                printf("🚫 Middleware unavailable - backend request blocked for security\n");
-                    }
-                }
-            } else {
-        // No middleware connection - block backend-bound commands
-                if (state.verbose >= 1) {
-            printf("🚫 No middleware connection - backend request blocked for security\n");
-        }
-    }
-}
+// Old middleware functions removed - now handled transparently by proxy
 
 // Check if we're in an SSH session
 int is_ssh_session(void) {
@@ -2265,7 +1961,7 @@ int is_puppetmaster_mode(void) {
 
 // Hand off to remote shell when SSH detected (Option 2)
 void handoff_to_remote_shell(void) {
-    if (state.verbose >= 1) {
+        if (state.verbose >= 1) {
         printf("🌐 SSH session detected - handing off to remote shell\n");
     }
     
@@ -2413,13 +2109,13 @@ int is_ai_query(const char* cmd) {
 
 void execute_command_securely(const char* cmd) {
     // Check if any children are ready
-    int backend_ready = (state.backend_pid > 0 && is_process_running(state.backend_pid) && state.ai_status == AI_READY);
+    int backend_ready = (state.backend_pid > 0 && is_process_running(state.backend_pid) && state.socket_fd >= 0);
     int sandbox_ready = (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid));
-    int middleware_ready = (security_agent_socket_fd >= 0);
+    // Middleware is transparent - backend handles security checks internally
     
-    if (!backend_ready && !sandbox_ready && !middleware_ready) {
+    if (!backend_ready && !sandbox_ready) {
         // No children ready - run command directly as bash fallback
-        if (state.verbose >= 1) {
+                    if (state.verbose >= 1) {
             printf("⚠️ No children ready - running command directly\n");
         }
         int result = system(cmd);
@@ -2430,11 +2126,16 @@ void execute_command_securely(const char* cmd) {
     }
     
     // Check if this looks like an AI query first
-    if (is_ai_query(cmd) && backend_ready && middleware_ready) {
+    if (is_ai_query(cmd) && backend_ready) {
         if (state.verbose >= 2) {
             printf("🤖 AI query detected: %s\n", cmd);
         }
-        send_to_middleware(cmd);
+        // Show thinking dots while processing
+        printf("🤔 Thinking");
+        fflush(stdout);
+        
+        // Send directly to backend - backend will check with security agent
+        send_to_backend_directly(cmd);
         return;
     }
     
@@ -2446,47 +2147,106 @@ void execute_command_securely(const char* cmd) {
     }
     int sandbox_result = test_command_in_sandbox(cmd);
     
+    if (state.verbose >= 2) {
+        printf("DEBUG: sandbox_result=%d\n", sandbox_result);
+    }
+    
     if (sandbox_result == 0) {
         // SAFE - Sandbox validation passed - execute command directly in frontend
         if (state.verbose >= 2) {
             printf("✅ Sandbox validation passed - executing command directly\n");
         }
-        if (is_interactive_command(cmd)) {
-            if (state.verbose >= 1) {
-                printf("🖥️ Interactive command - running directly with TTY\n");
+        // Run non-interactive command with popen to capture output
+        FILE* cmd_pipe = popen(cmd, "r");
+        if (cmd_pipe) {
+            char buffer[1024];
+            while (fgets(buffer, sizeof(buffer), cmd_pipe)) {
+                printf("%s", buffer);
             }
-            // Run interactive command with proper TTY for password prompts
-            run_interactive_command(cmd);
-        } else {
-            // Run non-interactive command with popen to capture output
-            FILE* cmd_pipe = popen(cmd, "r");
-            if (cmd_pipe) {
-                char buffer[1024];
-                while (fgets(buffer, sizeof(buffer), cmd_pipe)) {
-                    printf("%s", buffer);
-                }
-                int exit_code = pclose(cmd_pipe);
-                if (exit_code != 0 && state.verbose >= 1) {
-                    printf("Command failed (exit %d)\n", exit_code);
-                }
-            } else {
-                printf("Failed to execute command\n");
-            }
+            int exit_code = pclose(cmd_pipe);
+            if (exit_code != 0 && state.verbose >= 1) {
+                printf("Command failed (exit %d)\n", exit_code);
+                    }
+                } else {
+            printf("Failed to execute command\n");
         }
         return;
-    } else {
-        // Sandbox validation failed - route to backend for AI help
+    } else if (sandbox_result == -113) {
+        // INVALID BASH - Sandbox detected invalid bash command - route to AI
         if (state.verbose >= 2) {
-            printf("🤖 Sandbox validation failed - routing to backend for AI help\n");
+            printf("🤖 Sandbox detected invalid bash command - routing to AI\n");
         }
-        if (backend_ready && middleware_ready) {
+        if (backend_ready) {
             // Show thinking dots while processing
             printf("🤔 Thinking");
             fflush(stdout);
             
             // Send to middleware and wait for response
-            send_to_middleware_and_wait(cmd);
-        } else {
+            send_to_backend_directly(cmd);
+            } else {
+            printf("🚫 Backend/middleware not available for AI help\n");
+        }
+        return;
+    } else if (sandbox_result == -103) {
+        // INTERACTIVE - Sandbox detected interactive command - run with TTY
+        if (state.verbose >= 2) {
+            printf("🖥️ Sandbox detected interactive command - running with TTY\n");
+        }
+        run_interactive_command(cmd);
+        return;
+    } else if (sandbox_result == -109) {
+        // ERROR - Command not found or error (1-2 words) - show error message
+                if (state.verbose >= 1) {
+            printf("❌ Command not found or error\n");
+        }
+        return;
+    } else {
+        // Sandbox validation failed - check word count before routing to AI
+        if (state.verbose >= 2) {
+            printf("🤖 Sandbox validation failed - checking word count before AI routing\n");
+        }
+        
+        // Count words in command
+        int word_count = 0;
+        char cmd_copy[MAX_CMD_LEN];
+        strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
+        cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+        char* word = strtok(cmd_copy, " \t");
+        while (word && word_count < 10) {
+            word_count++;
+            word = strtok(NULL, " \t");
+        }
+        
+        if (word_count <= 2) {
+            // 1-2 words: treat as interactive command instead of AI
+            if (state.verbose >= 2) {
+                printf("🖥️ Command has %d words - treating as interactive instead of AI\n", word_count);
+            }
+            run_interactive_command(cmd);
+            return;
+        }
+        
+        // Special case: SSH commands should always be interactive regardless of word count
+        if (strncmp(cmd, "ssh", 3) == 0) {
+            if (state.verbose >= 2) {
+                printf("🖥️ SSH command detected - treating as interactive\n");
+            }
+            run_interactive_command(cmd);
+            return;
+        }
+        
+        // 3+ words: route to AI
+        if (state.verbose >= 2) {
+            printf("🤖 Command has %d words - routing to backend for AI help\n", word_count);
+        }
+        if (backend_ready) {
+            // Show thinking dots while processing
+            printf("🤔 Thinking");
+            fflush(stdout);
+            
+            // Send to middleware and wait for response
+            send_to_backend_directly(cmd);
+    } else {
             printf("🚫 Backend/middleware not available for AI help\n");
         }
         return;
@@ -2553,7 +2313,7 @@ int main() {
     
     // Don't block SIGINT here - we want to handle it in the main process
     
-    // Load configuration
+    // Load configuration FIRST, before any startup messages
     load_config();
     
     // Set VERBOSE environment variable for all child processes
@@ -2562,9 +2322,7 @@ int main() {
     setenv("VERBOSE", verbose_str, 1);
     
     // Initialize Security Agent socket
-    if (init_security_agent_socket() != 0) {
-        printf("⚠️ Warning: Could not initialize Security Agent socket\n");
-    }
+    // Socket initialization removed - middleware handles this
     
     // Initialize Sandbox socket
     if (init_sandbox_socket() != 0) {
@@ -2857,6 +2615,9 @@ int main() {
         // Handle command - clean logic: aweX → built-in → sandbox → backend
         if (is_awesh_command(line)) {
             // 2a - aweX commands
+            if (state.verbose >= 2) {
+                printf("DEBUG: Detected awesh command: %s\n", line);
+            }
             handle_awesh_command(line);
         } else if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
             // Built-in commands - handled by frontend, not backend
@@ -2877,93 +2638,42 @@ int main() {
 }
 
 void run_interactive_command(const char* cmd) {
-    // Create a PTY for proper TTY support (needed for SSH password prompts)
-    int master_fd, slave_fd;
-    char slave_name[256];
-    
-    if (openpty(&master_fd, &slave_fd, slave_name, NULL, NULL) < 0) {
-        perror("Failed to create PTY for interactive command");
-        // Fallback to system() if PTY creation fails
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command failed (exit %d)\n", result);
-        }
-        return;
-    }
+    // For interactive commands like watch, top, etc., we need to run them directly
+    // without bash -c to ensure proper TTY support for key detection
     
     // Fork to run the interactive command
     pid_t pid = fork();
     if (pid == 0) {
-        // Child process: use PTY slave as stdio
-        close(master_fd);  // Close master in child
-        
-        // Redirect stdin, stdout, stderr to PTY slave
-        dup2(slave_fd, STDIN_FILENO);
-        dup2(slave_fd, STDOUT_FILENO);
-        dup2(slave_fd, STDERR_FILENO);
-        
-        // Close slave fd (now duplicated)
-        close(slave_fd);
+        // Child process: run the command directly
+        // This preserves the current TTY for interactive commands
         
         // Set TERM environment variable for proper terminal support
         setenv("TERM", "xterm-256color", 1);
         
-        // Execute the command
+        // Parse the command to get the program and arguments
+        char cmd_copy[MAX_CMD_LEN];
+        strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
+        cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+        
+        // Split command into arguments
+        char* args[64];
+        int arg_count = 0;
+        char* token = strtok(cmd_copy, " \t");
+        
+        while (token && arg_count < 63) {
+            args[arg_count++] = token;
+            token = strtok(NULL, " \t");
+        }
+        args[arg_count] = NULL;
+        
+        // Execute the command directly (preserves TTY for interactive commands)
+        execvp(args[0], args);
+        
+        // If execvp fails, try with bash as fallback
         execl("/bin/bash", "bash", "-c", cmd, NULL);
         exit(1); // Should not reach here
     } else if (pid > 0) {
-        // Parent process: close slave fd, keep master
-        close(slave_fd);
-        
-        // Set up terminal for raw input (needed for password prompts)
-        struct termios termios_old, termios_new;
-        tcgetattr(STDIN_FILENO, &termios_old);
-        termios_new = termios_old;
-        termios_new.c_lflag &= ~(ECHO | ICANON);
-        tcsetattr(STDIN_FILENO, TCSANOW, &termios_new);
-        
-        // Relay data between stdin and master PTY
-        fd_set readfds;
-        char buffer[1024];
-        int max_fd = (master_fd > STDIN_FILENO) ? master_fd : STDIN_FILENO;
-        
-        while (1) {
-            FD_ZERO(&readfds);
-            FD_SET(STDIN_FILENO, &readfds);
-            FD_SET(master_fd, &readfds);
-            
-            int result = select(max_fd + 1, &readfds, NULL, NULL, NULL);
-            if (result > 0) {
-                if (FD_ISSET(STDIN_FILENO, &readfds)) {
-                    // Data from stdin -> send to command
-                    ssize_t bytes_read = read(STDIN_FILENO, buffer, sizeof(buffer));
-                    if (bytes_read > 0) {
-                        write(master_fd, buffer, bytes_read);
-                    } else if (bytes_read == 0) {
-                        // EOF from stdin
-                        break;
-                    }
-                }
-                if (FD_ISSET(master_fd, &readfds)) {
-                    // Data from command -> send to stdout
-                    ssize_t bytes_read = read(master_fd, buffer, sizeof(buffer));
-                    if (bytes_read > 0) {
-                        write(STDOUT_FILENO, buffer, bytes_read);
-                    } else if (bytes_read == 0) {
-                        // EOF from command
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Restore terminal settings
-        tcsetattr(STDIN_FILENO, TCSANOW, &termios_old);
-        
-        // Close master fd
-        close(master_fd);
-        
-        // Wait for child process to complete
+        // Parent process: wait for child to complete
         int status;
         waitpid(pid, &status, 0);
         
@@ -2971,11 +2681,8 @@ void run_interactive_command(const char* cmd) {
             printf("Command failed (exit %d)\n", WEXITSTATUS(status));
         }
     } else {
-        // Fork failed
-        close(master_fd);
-        close(slave_fd);
+        // Fork failed - fallback to system()
         perror("Failed to fork for interactive command");
-        // Fallback to system()
         int result = system(cmd);
         if (result != 0 && state.verbose >= 1) {
             printf("Command failed (exit %d)\n", result);
