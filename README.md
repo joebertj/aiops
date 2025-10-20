@@ -6,13 +6,13 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 
 **💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 
-> **📍 Note:** The awesh project has been moved to a standalone location: **[~/awesh](file:///home/joebert/awesh)**
+> **📍 Note:** The awesh project has been moved to a standalone repository: **[awesh](https://github.com/joebertj/awesh)**
 
 ## 🚀 awesh - AI-Aware Interactive Shell
 
 **awesh** is an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations. It's a "free cursor" for shell-native AI assistance - bringing AI-powered development to your terminal without IDE bloat.
 
-**[📖 Visit the awesh project →](file:///home/joebert/awesh)** for full documentation, installation guide, and usage examples.
+**[📖 Visit the awesh project →](https://github.com/joebertj/awesh)** for full documentation, installation guide, and usage examples.
 
 ## 📖 Related Reading
 
@@ -47,7 +47,7 @@ Open source thrives on experimentation and innovation. AI provides the base infr
 
 An intelligent shell that seamlessly blends natural language AI interaction with traditional bash operations. **Built by Ops, for Ops** - designed for systems administrators, DevOps engineers, and infrastructure professionals who live in the terminal.
 
-**[📖 Full awesh documentation →](file:///home/joebert/awesh)**
+**[📖 Full awesh documentation →](https://github.com/joebertj/awesh)**
 
 ### ⚙️ **Kubernetes MCP Server** 
 *Direct natural language to Kubernetes API*
@@ -76,11 +76,12 @@ aiops/
 ├── planner/              # Task planning and orchestration
 └── state_store/          # State management
 
-~/awesh/                  # AI-aware interactive shell (standalone project)
+github.com/joebertj/awesh # AI-aware interactive shell (standalone repository)
 ├── awesh.c               # C frontend
 ├── awesh_backend/        # Python backend
 ├── awesh_sandbox.c       # Security sandbox
 ├── security_agent.c      # Security middleware
+├── deployment_mcp.py     # Build and deployment automation
 └── README.md             # Full documentation
 ```
 
@@ -90,7 +91,7 @@ aiops/
 
 For awesh installation and usage instructions, please visit:
 
-**[📖 awesh Project →](file:///home/joebert/awesh)**
+**[📖 awesh Project →](https://github.com/joebertj/awesh)**
 
 The awesh project is now maintained as a standalone project with its own documentation and installation guide.
 
