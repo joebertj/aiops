@@ -85,6 +85,11 @@ class FileAgent:
             
         debug_log(f"Processing prompt in directory: {self.current_dir}")
         
+        # Skip file agent for file creation requests
+        if self._is_file_creation_request(prompt):
+            debug_log("File creation request detected - skipping file agent processing")
+            return prompt, False
+        
         # Extract potential file references from prompt
         file_candidates = self._extract_file_candidates(prompt)
         
@@ -107,6 +112,25 @@ class FileAgent:
         enhanced_prompt = await self._inject_file_context(prompt, file_matches)
         
         return enhanced_prompt, True
+    
+    def _is_file_creation_request(self, prompt: str) -> bool:
+        """Detect if this is a file creation request that should skip file agent processing"""
+        prompt_lower = prompt.lower()
+        
+        # Common file creation patterns
+        creation_patterns = [
+            r'\b(create|write|make|generate|build)\s+.*\s+(file|program|script|code)',
+            r'\b(write|create|make)\s+.*\s+as\s+\w+\.\w+',
+            r'\b(generate|create)\s+.*\s+and\s+name\s+it',
+            r'\b(hello\s+world|hello\s+world\s+in)',
+            r'\b(create|write)\s+.*\s+in\s+\w+\s+and\s+name\s+it',
+        ]
+        
+        for pattern in creation_patterns:
+            if re.search(pattern, prompt_lower):
+                return True
+        
+        return False
     
     def _extract_file_candidates(self, prompt: str) -> List[str]:
         """Extract potential file references from the prompt and verify they exist"""

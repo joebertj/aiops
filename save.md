@@ -140,18 +140,48 @@ Frontend → Sandbox → Frontend → Middleware → Backend → Middleware → 
 - ✅ **Sandbox**: Interactive detection, command validation, PS1-based detection
 - ✅ **Middleware**: Transparent proxy architecture implemented
 - ✅ **Backend**: AI processing, command execution
+- ✅ **Tilde Expansion**: Working for non-interactive commands (`cat ~/.aweshrc`, `echo ~/Documents`)
 
-### Testing Required
-- 🔄 **AI Query Flow**: Test `list all my containers` through new middleware
-- 🔄 **Security Validation**: Test blocked commands are properly rejected
-- 🔄 **Transparent Operation**: Verify frontend is unaware of middleware
+### Recent Fixes
+- ✅ **Command Routing**: Fixed `vi` commands being incorrectly routed to backend
+- ✅ **Special Case Logic**: Added `vi`/`vim` commands as always interactive
+- ✅ **Sandbox Tilde Expansion**: Added `bash -c` wrapper for proper shell expansion
+- ✅ **Frontend Tilde Expansion**: Both sandbox and frontend use bash for expansion
+
+### Current Issues
+- ⚠️ **`vi ~/.aweshrc` Problem**: Creates `.swp` file, tilde expansion not working in interactive path
+- ⚠️ **Interactive Command Tilde**: Tilde expansion in `run_interactive_command()` needs debugging
+
+### Testing Completed
+- ✅ **AI Query Flow**: Natural language commands work through middleware
+- ✅ **Security Validation**: Dangerous commands properly blocked
+- ✅ **Transparent Operation**: Frontend unaware of middleware
+- ✅ **Basic Commands**: `ls`, `cat`, `echo` with tilde expansion work
+- ✅ **Non-interactive Tilde**: `cat ~/.aweshrc` works perfectly
 
 ## 🎯 **NEXT STEPS**
 
-1. **Build and Deploy**: Compile new middleware proxy
-2. **Test AI Queries**: Verify natural language commands work
-3. **Test Security**: Verify dangerous commands are blocked
-4. **Performance**: Ensure transparent proxy doesn't add latency
+1. **Fix Interactive Tilde Expansion**: Debug why `vi ~/.aweshrc` creates `.swp` file
+2. **Test Interactive Commands**: Verify `vi`, `vim`, `nano` work with tilde paths
+3. **Clean Up Debug Output**: Remove temporary debug statements
+4. **Final Testing**: Comprehensive test of all command types
+
+## 🔍 **DEBUGGING NOTES**
+
+### Tilde Expansion Status
+- ✅ **Sandbox**: Uses `bash -c 'command'` - tilde expansion works
+- ✅ **Frontend Non-interactive**: Uses `popen(cmd, "r")` - tilde expansion works  
+- ⚠️ **Frontend Interactive**: Uses `execl("/bin/bash", "bash", "-c", cmd, NULL)` - needs debugging
+
+### Command Flow
+```
+User Input → Frontend → Special Case Check → Interactive Command → run_interactive_command()
+                                                                    ↓
+                                                              Tilde Expansion → bash -c
+```
+
+### Issue Location
+The problem is likely in `run_interactive_command()` where tilde expansion is handled before passing to `bash -c`. The current implementation may not be expanding tildes correctly for interactive commands.
 
 ---
-*Architecture refactored to transparent middleware proxy - ready for testing*
+*Tilde expansion mostly working - need to fix interactive command path*

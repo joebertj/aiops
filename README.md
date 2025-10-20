@@ -6,80 +6,13 @@ This project showcases AI-first approaches to operations, featuring **awesh** - 
 
 **💡 Core Vision:** AI assistance in the terminal without IDE bloat - the benefits of AI-powered development without editor overhead or opinionated tool constraints.
 
+> **📍 Note:** The awesh project has been moved to a standalone location: **[~/awesh](file:///home/joebert/awesh)**
+
 ## 🚀 awesh - AI-Aware Interactive Shell
 
-![awesh](awesh/awesh.png)
+**awesh** is an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations. It's a "free cursor" for shell-native AI assistance - bringing AI-powered development to your terminal without IDE bloat.
 
-**awesh** is the centerpiece of this toolkit - an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations.
-
-## ⚡ Quickstart - Get awesh Running Fast
-
-### 🚀 One-Command Installation
-```bash
-# Clone and install awesh in one go
-git clone https://github.com/joebertj/aiops.git
-cd aiops
-python3 deployment/deployment_mcp.py clean_install
-```
-
-### 🔑 Configure Your API Key
-```bash
-# Set your OpenAI API key
-export OPENAI_API_KEY=your_api_key_here
-export OPENAI_MODEL=gpt-5
-
-# Optional: Use OpenRouter instead
-export AI_PROVIDER=openrouter
-export OPENROUTER_API_KEY=your_openrouter_key_here
-export OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
-```
-
-### 🎯 Start Using awesh
-```bash
-# Launch awesh
-awesh
-
-# Try these examples:
-> find all files that is recently edited
-> show me the system status
-> list all python processes
-> what's taking up disk space?
-```
-
-### 🛠️ Development Workflow
-```bash
-# Fast development cycle with Deployment MCP
-python3 deployment/deployment_mcp.py build_clean    # Build only
-python3 deployment/deployment_mcp.py deploy_only    # Deploy only
-python3 deployment/deployment_mcp.py clean_install  # Full cycle
-```
-
-### 🔧 Configuration
-```bash
-# Edit ~/.aweshrc for persistent settings
-VERBOSE=1                    # 0=silent, 1=info, 2=debug
-AI_PROVIDER=openai          # openai or openrouter
-MODEL=gpt-5                 # AI model to use
-```
-
-### 🎮 Control Commands
-```bash
-# Inside awesh
-aweh                        # Show help and all available commands
-awes                        # Show verbose status (API provider, model, debug state)
-awea                        # Show current AI provider and model
-awea openai                 # Switch to OpenAI
-awea openrouter             # Switch to OpenRouter
-awem                        # Show current model
-awem gpt-4                  # Set model to GPT-4
-awem gpt-3.5-turbo          # Set model to GPT-3.5 Turbo
-awem claude-3               # Set model to Claude 3
-awev                        # Show verbose level
-awev 0/1/2                  # Set verbose level
-awev on/off                 # Enable/disable verbose
-```
-
-**That's it!** You now have AI-powered shell assistance with security middleware, intelligent command routing, and full bash compatibility.
+**[📖 Visit the awesh project →](file:///home/joebert/awesh)** for full documentation, installation guide, and usage examples.
 
 ## 📖 Related Reading
 
@@ -109,157 +42,12 @@ Open source thrives on experimentation and innovation. AI provides the base infr
 
 ## 🌟 Featured Components
 
-### 🐚 **awesh** - AIWES (Awe-Inspired Workspace Environment Shell)
+### 🐚 **awesh** - AI-Aware Interactive Shell
 *"AI by default, Bash when I mean Bash"*
 
-**💎 Naming Inspiration:**
-awesh draws its name from my eldest daughter, **Awit Perl** - where "Awit" means "Psalm" in Filipino, representing both "Awe" and "Wit," while "Perl" means "Pearl" (still more OG than the Python we have today). This shell embodies the same wonder and wisdom that inspired its creation.
+An intelligent shell that seamlessly blends natural language AI interaction with traditional bash operations. **Built by Ops, for Ops** - designed for systems administrators, DevOps engineers, and infrastructure professionals who live in the terminal.
 
-The flagship component of AIOps - an intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. **Built by Ops, for Ops** - designed for systems administrators, DevOps engineers, and infrastructure professionals who live in the terminal.
-
-**💡 The "Free Cursor" Concept:**
-awesh represents what we really want from AI-assisted development: the AI assistance without the IDE bloat. It's a "free cursor" that's purely shell-based - giving you AI-powered development in your terminal without the overhead of editors or opinionated tool prompts.
-
-**🌍 Democratizing AI-Powered Development:**
-awesh brings the **Cursor/Claude Code experience to every shell**, democratizing AI-assisted development by making it a **shell primitive**, not an editor feature:
-
-- **🚀 Universal Access**: Any Linux/Unix system becomes AI-powered - no editor lock-in
-- **⚡ Shell-Native AI**: Natural language commands get AI interpretation and auto-execution  
-- **🔄 Intent Recognition**: "read md files" → AI understands → `ls *.md` → Shows results seamlessly
-- **🛠️ Tool Integration**: Works with vi, nano, grep, git - your existing workflow enhanced
-- **🔓 Open Ecosystem**: Not dependent on proprietary platforms or specific editors
-
-Instead of being locked into AI editors, **every shell becomes an AI-powered operations environment**. This democratizes access to AI-assisted infrastructure management for anyone with a terminal.
-
-**🔧 The Ops-First Philosophy:**
-awesh embraces the **minimalistic yet powerful** approach that operations professionals know and love:
-
-- **🖥️ Shell + vi Workflow**: Designed for those who live in terminals and edit with vi/vim
-- **⚡ No IDE Bloat**: Pure shell experience - familiar, fast, and efficient
-- **🛠️ Infrastructure-Focused**: Built for system administration, not application development  
-- **📊 Ops Mindset**: Troubleshooting, monitoring, deployment - operations tasks first
-- **🔍 Minimal Learning Curve**: If you know bash and vi, you know awesh
-
-**For the shell/vi professional** who wants AI assistance without abandoning the minimalistic, powerful tools that make operations efficient.
-
-**🎯 Ideal Test Users:**
-A 23-year terminal veteran is the perfect test user for writing an AI-enhanced terminal - not developers who spent time in advanced IDEs pampered by so much GUI tooling. Experienced terminal users understand the real workflow, know what's actually needed, and can identify when AI assistance genuinely enhances rather than complicates the shell experience.
-
-**🌟 Core Philosophy:**
-- **Zero-Friction AI**: No special syntax - just type naturally
-- **Intelligent Routing**: Automatically detects AI vs Bash intent
-- **Context-Aware**: Remembers your environment and command history
-- **Safety First**: AI suggestions with human control
-- **Gradual Adoption**: Works alongside your existing workflow
-
-**🚀 Key Features:**
-- **Smart Command Routing**: Detects shell syntax, commands, and natural language automatically
-- **OpenAI Integration**: Powered by GPT-4/GPT-5 with configurable models
-- **System Prompt Support**: Customizable AI behavior for your operations context  
-- **Streaming Responses**: Real-time AI output with conversation continuity
-- **Environment Variable Support**: Easy configuration via `~/.aweshrc`
-- **MCP Integration**: Secure tool execution through Model Context Protocol
-- **Full Bash Compatibility**: All your existing commands work exactly as before
-
-**💡 Example Usage:**
-```bash
-awesh> ls -la                              # → Sandbox validation → Direct execution
-awesh> what files are here?                # → Sandbox validation → AI query via middleware
-awesh> find . -name "*.py"                 # → Sandbox validation → Direct execution  
-awesh> explain this error                  # → Sandbox validation → AI query via middleware
-awesh> cat file.txt | grep error           # → Sandbox validation → Direct execution
-awesh> summarize this directory structure  # → Sandbox validation → AI query via middleware
-awesh> why did the build fail?             # → Sandbox validation → AI query via middleware
-awesh> awem gpt-4                          # → Built-in command (set model)
-awesh> awev 1                              # → Built-in command (enable verbose)
-```
-
-**"AI by default, Bash when I mean Bash."**
-
-**🔧 Installation:**
-```bash
-# Use deployment MCP for clean installation with virtual environment
-cd deployment/
-python3 deployment_mcp.py clean_install
-
-# Configure your OpenAI API key
-export OPENAI_API_KEY=your_api_key_here
-awesh
-```
-
-**🐍 Virtual Environment Enforcement:**
-AIOps automatically uses a Python virtual environment for all operations, ensuring:
-- **Dependency isolation** from system Python packages
-- **Consistent environments** across different systems  
-- **Clean deployments** with reproducible setups
-- **No conflicts** with system-installed packages
-
-The deployment script automatically creates and manages the virtual environment, installing all dependencies in isolation. See [VENV_SETUP.md](VENV_SETUP.md) for detailed information.
-
-**🔧 Configuration:**
-Set these environment variables in your shell:
-
-```bash
-# AI Provider Configuration
-export AI_PROVIDER=openai                    # openai or openrouter
-export OPENAI_MODEL=gpt-5                   # Model to use
-export OPENAI_API_KEY=sk-proj-abc123...xyz  # Your OpenAI API key (truncated)
-
-# OpenRouter Configuration (if using openrouter)
-export OPENROUTER_API_KEY=sk-or-v1-abc...xyz # Your OpenRouter API key (truncated)
-export OPENROUTER_MODEL=anthropic/claude-3-sonnet
-
-# Display Options  
-export VERBOSE=1              # 0=silent, 1=info, 2=debug (default: 1)
-
-# File Agent Options
-export FILE_AGENT_ENABLED=1           # 1=enabled, 0=disabled (default: 1)
-# Note: AI prompt enhancement is always enabled for built-in agents
-export FILE_AGENT_MAX_FILE_SIZE=50000 # Max size per file in bytes (default: 50000)
-export FILE_AGENT_MAX_TOTAL_CONTENT=10000 # Max total content to inject (default: 10000)
-export FILE_AGENT_MAX_FILES=5         # Max number of files to include (default: 5)
-```
-
-**Example configuration:**
-```bash
-export AI_PROVIDER=openai
-export OPENAI_MODEL=gpt-5
-export OPENAI_API_KEY=sk-proj-JrUoBu9D4iCb...T3BlbkFJMEjXf8l0w9SPKE-Rw
-export VERBOSE=1
-```
-
-**⚠️ Testing Status:**
-> **Currently optimized for OpenAI GPT-5**: awesh is actively tested and developed using OpenAI's GPT-5 model. While OpenRouter and other AI providers are supported, they may exhibit unexpected behavior or suboptimal performance. We recommend using OpenAI with GPT-5 for the most reliable experience while we continue testing and improving compatibility with other providers.
-
-**🎛️ Control Commands:**
-```bash
-# Help & Status
-aweh            # Show all available awesh control commands
-awes            # Show verbose status (API provider, model, debug state)
-awea            # Show current AI provider and model
-
-# Model Management
-awem            # Show current model
-awem gpt-4      # Set model to GPT-4
-awem gpt-3.5-turbo # Set model to GPT-3.5 Turbo
-awem claude-3   # Set model to Claude 3
-
-# Verbose Debug Control
-awev            # Show verbose level status
-awev 0          # Set verbose level 0 (silent)
-awev 1          # Set verbose level 1 (info)
-awev 2          # Set verbose level 2 (debug)
-awev on         # Enable verbose logging (level 1)
-awev off        # Disable verbose logging (level 0)
-
-# AI Provider Switching
-awea openai     # Switch to OpenAI (GPT models)
-awea openrouter # Switch to OpenRouter (multiple providers)
-```
-
-*Control commands use the `awe` prefix to avoid conflicts with bash builtins and create a clean namespace for awesh operations.*
-
-[📖 Learn more about awesh →](./awesh/)
+**[📖 Full awesh documentation →](file:///home/joebert/awesh)**
 
 ### ⚙️ **Kubernetes MCP Server** 
 *Direct natural language to Kubernetes API*
@@ -277,37 +65,34 @@ A Model Context Protocol server that converts natural language prompts directly 
 
 ```
 aiops/
-├── awesh/                  # AI-aware interactive shell (showcase)
-│   ├── main.py            # Shell entry point
-│   ├── router.py          # Command routing logic
-│   ├── config.py          # Configuration management
-│   └── specs.md           # Detailed specifications
 ├── kubernetes/            # Kubernetes MCP server
 │   ├── smart_k8s_mcp.py  # Natural language K8s server
 │   └── interactive_client.py
-├── credential_store/      # Secure credential management
+├── deployment/           # Deployment MCP and automation
+├── credential_store/     # Secure credential management
 ├── executor/             # Command execution framework
 ├── interaction/          # User interaction components  
 ├── nlp/                  # Natural language processing
 ├── planner/              # Task planning and orchestration
 └── state_store/          # State management
+
+~/awesh/                  # AI-aware interactive shell (standalone project)
+├── awesh.c               # C frontend
+├── awesh_backend/        # Python backend
+├── awesh_sandbox.c       # Security sandbox
+├── security_agent.c      # Security middleware
+└── README.md             # Full documentation
 ```
 
 ## 🚀 Quick Start
 
 ### Install awesh
 
-```bash
-# Use deployment MCP for clean installation with virtual environment
-cd deployment/
-python3 deployment_mcp.py clean_install
-```
+For awesh installation and usage instructions, please visit:
 
-**🐍 Virtual Environment Benefits:**
-- **Automatic setup**: Creates isolated Python environment
-- **Dependency management**: Installs all packages in venv
-- **Clean deployment**: No system Python conflicts
-- **Reproducible builds**: Same environment everywhere
+**[📖 awesh Project →](file:///home/joebert/awesh)**
+
+The awesh project is now maintained as a standalone project with its own documentation and installation guide.
 
 ### Try Kubernetes MCP Server
 

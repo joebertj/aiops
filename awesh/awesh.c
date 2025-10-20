@@ -24,16 +24,6 @@
 static char socket_path[512];
 static char mmap_path[512] = "/tmp/awesh_sandbox_output.mmap";
 
-// Remote prompt data structure
-typedef struct {
-    char username[64];
-    char hostname[64];
-    char cwd[256];
-    char git_branch[64];
-    char k8s_context[64];
-    char k8s_namespace[64];
-    int valid;
-} remote_prompt_data_t;
 
 // Security Agent socket communication
 // Security agent communication via stdin/stdout (no sockets needed)
@@ -60,9 +50,6 @@ void execute_command_securely(const char* cmd);
 int spawn_bash_sandbox(void);
 void cleanup_bash_sandbox(void);
 int is_ssh_session(void);
-int is_puppetmaster_mode(void);
-void handoff_to_remote_shell(void);
-remote_prompt_data_t get_remote_prompt_data(void);
 int is_ai_query(const char* cmd);
 int is_interactive_command(const char* cmd);
 int test_command_in_sandbox(const char* cmd);
@@ -943,8 +930,10 @@ void load_config() {
             state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
         }
         
-        // Set all config values as environment variables for backend
+        // Set all config values as environment variables for backend (except MODEL)
+        if (strcmp(key, "MODEL") != 0) {
         setenv(key, value, 1);
+    }
     }
         fclose(file);
     } else {
@@ -972,10 +961,22 @@ void load_config() {
             state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
         }
         
-        // Set all config values as environment variables for backend
-        setenv(key, value, 1);
+        // Set all config values as environment variables for backend (except MODEL)
+        if (strcmp(key, "MODEL") != 0) {
+            setenv(key, value, 1);
+        }
             }
     fclose(file);
+        }
+    }
+    
+    // Set default MODEL based on AI provider (after config is loaded)
+    if (!getenv("MODEL")) {
+        const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+        if (strcmp(ai_provider, "openrouter") == 0) {
+            setenv("MODEL", "claude-sonnet", 1);  // Default OpenRouter model
+        } else {
+            setenv("MODEL", "gpt-5", 1);  // Default OpenAI model
         }
     }
 }
@@ -1441,14 +1442,15 @@ void handle_awesh_command(const char* cmd) {
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
         printf("\n📋 Model:\n");
-        printf("  awem              Show current model\n");
-        printf("  awem gpt-4        Set model to GPT-4\n");
-        printf("  awem gpt-3.5-turbo Set model to GPT-3.5 Turbo\n");
-        printf("  awem claude-3     Set model to Claude 3\n");
+        printf("  awem              Show current model and supported models\n");
+        printf("  awem gpt-4        Set model to GPT-4 (OpenAI)\n");
+        printf("  awem gpt-5        Set model to GPT-5 (OpenAI)\n");
+        printf("  awem kimi-k2      Set model to Kimi K2 (OpenRouter)\n");
+        printf("  awem claude-sonnet Set model to Claude Sonnet (OpenRouter)\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-        const char* model = getenv("MODEL") ? getenv("MODEL") : "not configured";
+        const char* model = getenv("MODEL") ? getenv("MODEL") : "gpt-5";
         
         // Verbose status - show everything
         printf("🔍 Awesh Verbose Status:\n");
@@ -1520,13 +1522,7 @@ void handle_awesh_command(const char* cmd) {
         }
     } else if (strncmp(cmd, "awea", 4) == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-        const char* model = NULL;
-        
-        if (strcmp(ai_provider, "openrouter") == 0) {
-            model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
-        } else {
-            model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
-        }
+        const char* model = getenv("MODEL") ? getenv("MODEL") : "gpt-5";
         
         // Parse awea command and arguments
         if (strcmp(cmd, "awea") == 0) {
@@ -1549,41 +1545,49 @@ void handle_awesh_command(const char* cmd) {
     } else if (strncmp(cmd, "awem", 4) == 0) {
         // Parse awem command and arguments
         if (strcmp(cmd, "awem") == 0) {
-            // Just "awem" - show current model
+            // Just "awem" - show current model and supported models
+            const char* current_model = getenv("MODEL") ? getenv("MODEL") : "gpt-5";
             const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-            const char* model = NULL;
             
-            if (strcmp(ai_provider, "openrouter") == 0) {
-                model = getenv("OPENROUTER_MODEL") ? getenv("OPENROUTER_MODEL") : "not configured";
-            } else {
-                model = getenv("OPENAI_MODEL") ? getenv("OPENAI_MODEL") : "not configured";
-            }
-            
-            printf("📋 Current Model: %s\n", model);
+            printf("📋 Current Model: %s\n", current_model);
+            printf("🤖 Supported Models:\n");
+            printf("\n🔹 OpenAI Models:\n");
+            printf("  • gpt-4         - GPT-4 (stable, reliable)\n");
+            printf("  • gpt-5         - GPT-5 (advanced, latest)\n");
+            printf("\n🔹 OpenRouter Models:\n");
+            printf("  • kimi-k2       - Kimi K2 (fast, efficient)\n");
+            printf("  • claude-sonnet - Claude Sonnet (reasoning, analysis)\n");
+            printf("\n💡 Current Provider: %s\n", ai_provider);
+            printf("💡 Switch models with: awem <model-name>\n");
+        } else if (strcmp(cmd, "awem gpt-4") == 0) {
+            // Set model to GPT-4
+            setenv("MODEL", "gpt-4", 1);
+            send_command("MODEL:gpt-4");
+            printf("📋 Model switched to GPT-4 (OpenAI) ✅\n");
+        } else if (strcmp(cmd, "awem gpt-5") == 0) {
+            // Set model to GPT-5  
+            setenv("MODEL", "gpt-5", 1);
+            send_command("MODEL:gpt-5");
+            printf("📋 Model switched to GPT-5 (OpenAI) ✅\n");
+        } else if (strcmp(cmd, "awem kimi-k2") == 0) {
+            // Set model to Kimi K2
+            setenv("MODEL", "kimi-k2", 1);
+            send_command("MODEL:kimi-k2");
+            printf("📋 Model switched to Kimi K2 (OpenRouter) ✅\n");
+        } else if (strcmp(cmd, "awem claude-sonnet") == 0) {
+            // Set model to Claude Sonnet
+            setenv("MODEL", "claude-sonnet", 1);
+            send_command("MODEL:claude-sonnet");
+            printf("📋 Model switched to Claude Sonnet (OpenRouter) ✅\n");
         } else {
-            // Extract model name from command
+            // Extract model name from command for validation
             char* model_name = strchr(cmd, ' ');
             if (model_name) {
                 model_name++; // Skip the space
-                
-                const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
-                
-                // Update model in config and environment based on provider
-                if (strcmp(ai_provider, "openrouter") == 0) {
-                    update_config_file("OPENROUTER_MODEL", model_name);
-                    setenv("OPENROUTER_MODEL", model_name, 1);
-                    send_command("OPENROUTER_MODEL:");
-                } else {
-                    update_config_file("OPENAI_MODEL", model_name);
-                    setenv("OPENAI_MODEL", model_name, 1);
-                    send_command("OPENAI_MODEL:");
-                }
-                send_command(model_name);
-                
-                printf("📋 Model set to: %s (restart awesh to take effect)\n", model_name);
-            } else {
-                printf("❌ Please specify a model. Example: 'awem gpt-4'\n");
+                printf("❌ Unsupported model: %s\n", model_name);
             }
+            printf("🤖 Supported models: gpt-4, gpt-5, kimi-k2, claude-sonnet\n");
+            printf("💡 Usage: awem [gpt-4|gpt-5|kimi-k2|claude-sonnet]\n");
         }
     }
 }
@@ -1922,129 +1926,9 @@ int is_ssh_session(void) {
             getenv("SSH_CONNECTION") != NULL);
 }
 
-// Check if PUPPETMASTER mode is enabled
-int is_puppetmaster_mode(void) {
-    // Check environment variable first
-    char* puppetmaster_env = getenv("PUPPETMASTER");
-    if (puppetmaster_env && strcmp(puppetmaster_env, "1") == 0) {
-        return 1;
-    }
-    
-    // Check ~/.aweshrc file
-    char* home = getenv("HOME");
-    if (!home) return 0;
-    
-    char config_path[512];
-    snprintf(config_path, sizeof(config_path), "%s/.aweshrc", home);
-    
-    FILE* config_file = fopen(config_path, "r");
-    if (!config_file) return 0;
-    
-    char line[256];
-    while (fgets(line, sizeof(line), config_file)) {
-        // Remove newline
-        line[strcspn(line, "\n")] = '\0';
-        
-        // Skip comments and empty lines
-        if (line[0] == '#' || line[0] == '\0') continue;
-        
-        // Check for PUPPETMASTER=1
-        if (strncmp(line, "PUPPETMASTER=1", 14) == 0) {
-            fclose(config_file);
-            return 1;
-        }
-    }
-    
-    fclose(config_file);
-    return 0;
-}
 
-// Hand off to remote shell when SSH detected (Option 2)
-void handoff_to_remote_shell(void) {
-        if (state.verbose >= 1) {
-        printf("🌐 SSH session detected - handing off to remote shell\n");
-    }
-    
-    // Set up remote environment
-    setenv("AWESH_REMOTE_MODE", "1", 1);
-    
-    // Start remote shell with proper PTY
-    execl("/bin/bash", "bash", NULL);
-    
-    // If execl fails, fall back to system
-    system("exec bash");
-    exit(0);
-}
 
-// Get remote prompt data via command execution (Option 3)
-remote_prompt_data_t get_remote_prompt_data(void) {
-    remote_prompt_data_t data = {0};
-    
-    // Get username
-    char* username = getenv("USER");
-    if (username) {
-        strncpy(data.username, username, sizeof(data.username) - 1);
-    }
-    
-    // Get hostname via command
-    FILE* hostname_cmd = popen("hostname", "r");
-    if (hostname_cmd) {
-        if (fgets(data.hostname, sizeof(data.hostname), hostname_cmd)) {
-            data.hostname[strcspn(data.hostname, "\n")] = '\0';
-        }
-        pclose(hostname_cmd);
-    }
-    
-    // Get current working directory via command
-    FILE* pwd_cmd = popen("pwd", "r");
-    if (pwd_cmd) {
-        if (fgets(data.cwd, sizeof(data.cwd), pwd_cmd)) {
-            data.cwd[strcspn(data.cwd, "\n")] = '\0';
-            
-            // Replace home directory with ~
-            char* home = getenv("HOME");
-            if (home && strncmp(data.cwd, home, strlen(home)) == 0) {
-                char temp[256];
-                snprintf(temp, sizeof(temp), "~%s", data.cwd + strlen(home));
-                strcpy(data.cwd, temp);
-            }
-        }
-        pclose(pwd_cmd);
-    }
-    
-    // Get git branch via command
-    FILE* git_cmd = popen("git branch --show-current 2>/dev/null", "r");
-    if (git_cmd) {
-        if (fgets(data.git_branch, sizeof(data.git_branch), git_cmd)) {
-            data.git_branch[strcspn(data.git_branch, "\n")] = '\0';
-        }
-        pclose(git_cmd);
-    }
-    
-    // Get kubernetes context via command
-    FILE* k8s_cmd = popen("kubectl config current-context 2>/dev/null", "r");
-    if (k8s_cmd) {
-        if (fgets(data.k8s_context, sizeof(data.k8s_context), k8s_cmd)) {
-            data.k8s_context[strcspn(data.k8s_context, "\n")] = '\0';
-        }
-        pclose(k8s_cmd);
-    }
-    
-    // Get kubernetes namespace via command
-    FILE* k8s_ns_cmd = popen("kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null", "r");
-    if (k8s_ns_cmd) {
-        if (fgets(data.k8s_namespace, sizeof(data.k8s_namespace), k8s_ns_cmd)) {
-            data.k8s_namespace[strcspn(data.k8s_namespace, "\n")] = '\0';
-            if (strlen(data.k8s_namespace) == 0) {
-                strcpy(data.k8s_namespace, "default");
-            }
-        }
-        pclose(k8s_ns_cmd);
-    }
-    
-    data.valid = 1;
-    return data;
-}
+
 
 // Check if command looks like an AI query (natural language)
 int is_ai_query(const char* cmd) {
@@ -2113,6 +1997,8 @@ void execute_command_securely(const char* cmd) {
     int sandbox_ready = (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid));
     // Middleware is transparent - backend handles security checks internally
     
+    printf("DEBUG: execute_command_securely called with: %s\n", cmd);
+    
     if (!backend_ready && !sandbox_ready) {
         // No children ready - run command directly as bash fallback
                     if (state.verbose >= 1) {
@@ -2136,6 +2022,16 @@ void execute_command_securely(const char* cmd) {
         
         // Send directly to backend - backend will check with security agent
         send_to_backend_directly(cmd);
+        return;
+    }
+    
+    // Special case: vi/vim commands should always be interactive regardless of word count
+    if (strncmp(cmd, "vi ", 3) == 0 || strncmp(cmd, "vim ", 4) == 0) {
+        if (state.verbose >= 2) {
+            printf("🖥️ vi/vim command detected - treating as interactive\n");
+        }
+        printf("DEBUG: vi command detected, running interactive command: %s\n", cmd);
+        run_interactive_command(cmd);
         return;
     }
     
@@ -2234,6 +2130,7 @@ void execute_command_securely(const char* cmd) {
             run_interactive_command(cmd);
             return;
         }
+        
         
         // 3+ words: route to AI
         if (state.verbose >= 2) {
@@ -2406,16 +2303,6 @@ int main() {
         }
     }
     
-    // Check for SSH session and handle based on PUPPETMASTER mode
-    if (is_ssh_session()) {
-        if (is_puppetmaster_mode()) {
-            if (state.verbose >= 1) {
-                printf("🎭 PUPPETMASTER mode enabled - maintaining awesh prompt on remote\n");
-            }
-        } else {
-            handoff_to_remote_shell();
-        }
-    }
     
     // Main shell loop - start immediately, don't wait for backend
     char* line;
@@ -2429,39 +2316,8 @@ int main() {
         char k8s_context[64] = "";
         char k8s_namespace[64] = "";
         
-        // Check if we're in SSH session with PUPPETMASTER mode
-        if (is_ssh_session() && is_puppetmaster_mode()) {
-            // Get remote prompt data
-            remote_prompt_data_t remote_data = get_remote_prompt_data();
-            
-            if (remote_data.valid) {
-                username = remote_data.username;
-                strcpy(hostname, remote_data.hostname);
-                strcpy(cwd, remote_data.cwd);
-                strcpy(git_branch, remote_data.git_branch);
-                strcpy(k8s_context, remote_data.k8s_context);
-                strcpy(k8s_namespace, remote_data.k8s_namespace);
-            } else {
-                // Fallback to local data if remote data unavailable
-                username = getenv("USER");
-                if (!username) username = "user";
-                if (gethostname(hostname, sizeof(hostname)) != 0) {
-                    strcpy(hostname, "localhost");
-                }
-                if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                    strcpy(cwd, "~");
-                } else {
-                    char* home = getenv("HOME");
-                    if (home && strncmp(cwd, home, strlen(home)) == 0) {
-                        char temp[256];
-                        snprintf(temp, sizeof(temp), "~%s", cwd + strlen(home));
-                        strcpy(cwd, temp);
-                    }
-                }
-            }
-        } else {
-            // Use local data (normal mode)
-            username = getenv("USER");
+        // Use local data (normal mode)
+        username = getenv("USER");
         if (!username) username = "user";
         
         if (gethostname(hostname, sizeof(hostname)) != 0) {
@@ -2476,7 +2332,6 @@ int main() {
                 char temp[256];
                 snprintf(temp, sizeof(temp), "~%s", cwd + strlen(home));
                 strcpy(cwd, temp);
-                }
             }
         }
         
@@ -2486,10 +2341,8 @@ int main() {
         // Build secure dynamic prompt directly in C (no external file dependencies)
         long prompt_start = get_time_ms();
         
-        // Get prompt data with caching optimization (only for local mode)
-        if (!is_ssh_session() || !is_puppetmaster_mode()) {
+        // Get prompt data with caching optimization
         get_prompt_data_cached(git_branch, k8s_context, k8s_namespace, 64);
-        }
         
         // Build context parts string with emojis (clean format)
         char context_parts[256] = "";
@@ -2638,39 +2491,36 @@ int main() {
 }
 
 void run_interactive_command(const char* cmd) {
-    // For interactive commands like watch, top, etc., we need to run them directly
-    // without bash -c to ensure proper TTY support for key detection
+    // For interactive commands like vi, watch, top, etc., we need to run them directly
+    // with proper TTY support and shell expansion
     
     // Fork to run the interactive command
     pid_t pid = fork();
     if (pid == 0) {
-        // Child process: run the command directly
-        // This preserves the current TTY for interactive commands
+        // Child process: run the command with proper TTY and shell expansion
         
         // Set TERM environment variable for proper terminal support
         setenv("TERM", "xterm-256color", 1);
         
-        // Parse the command to get the program and arguments
-        char cmd_copy[MAX_CMD_LEN];
-        strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
-        cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+        // Expand tilde before passing to bash for interactive commands
+        char expanded_cmd[MAX_CMD_LEN];
+        strncpy(expanded_cmd, cmd, sizeof(expanded_cmd) - 1);
+        expanded_cmd[sizeof(expanded_cmd) - 1] = '\0';
         
-        // Split command into arguments
-        char* args[64];
-        int arg_count = 0;
-        char* token = strtok(cmd_copy, " \t");
-        
-        while (token && arg_count < 63) {
-            args[arg_count++] = token;
-            token = strtok(NULL, " \t");
+        // Simple tilde expansion for interactive commands
+        if (expanded_cmd[0] == '~') {
+            const char* home = getenv("HOME");
+            if (home) {
+                char temp[MAX_CMD_LEN];
+                snprintf(temp, sizeof(temp), "%s%s", home, expanded_cmd + 1);
+                strncpy(expanded_cmd, temp, sizeof(expanded_cmd) - 1);
+                expanded_cmd[sizeof(expanded_cmd) - 1] = '\0';
+            }
         }
-        args[arg_count] = NULL;
         
-        // Execute the command directly (preserves TTY for interactive commands)
-        execvp(args[0], args);
-        
-        // If execvp fails, try with bash as fallback
-        execl("/bin/bash", "bash", "-c", cmd, NULL);
+        // Use bash -c to handle shell expansions (tilde, variables, etc.)
+        // This ensures proper expansion while maintaining TTY support
+        execl("/bin/bash", "bash", "-c", expanded_cmd, NULL);
         exit(1); // Should not reach here
     } else if (pid > 0) {
         // Parent process: wait for child to complete
