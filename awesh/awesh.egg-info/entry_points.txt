@@ -1,3 +1,0 @@
-[console_scripts]
-awesh = awesh.main:cli_main
-
